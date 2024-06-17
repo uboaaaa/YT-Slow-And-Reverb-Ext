@@ -3,11 +3,11 @@ let dryGainNode;
 let wetGainNode;
 let convolverNode;
 
-const DECAY_TIME_SECONDS = 3;
+const DECAY_TIME_SECONDS = 4; //TODO: fine tune reverb
 const PRE_DELAY_SECONDS = 0.05;
 const CHANNEL_COUNT = 2;
 
-// Function to create white noise buffer
+// Create white noise, then IR
 const createWhiteNoiseBuffer = (audioContext) => {
   const buffer = audioContext.createBuffer(
     CHANNEL_COUNT,
@@ -23,7 +23,6 @@ const createWhiteNoiseBuffer = (audioContext) => {
   return buffer;
 };
 
-// Function to create impulse response
 const createImpulseResponse = async (audioContext) => {
   const offlineContext = new OfflineAudioContext(
     CHANNEL_COUNT,
@@ -47,7 +46,10 @@ const createImpulseResponse = async (audioContext) => {
   return renderedBuffer;
 };
 
+
 // Initialize audio context and nodes
+// media --> dry --> output (playbackRate adjustment path)
+// media --> wet --> convolver --> output (reverb adjustment path) 
 async function initializeAudio() {
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
   console.log('Audio context created.');
@@ -62,7 +64,7 @@ async function initializeAudio() {
   dryGainNode.connect(audioContext.destination);
   wetGainNode.connect(audioContext.destination);
 
-  // Create Convolver node and load impulse response
+  // Create Convolver node and load IR
   const impulseBuffer = await createImpulseResponse(audioContext);
   convolverNode = audioContext.createConvolver();
   convolverNode.buffer = impulseBuffer;
@@ -84,11 +86,12 @@ function connectMediaElement(element) {
     sourceNode.connect(convolverNode);
 
     element.sourceNode = sourceNode;
-    element.preservesPitch = false; // Disable pitch preservation
+    element.preservesPitch = false; 
     console.log(`Media element connected: ${element.tagName}`);
   }
 }
 
+// Updating functions
 function updatePlaybackRate(newPlaybackRate) {
   const mediaElements = document.querySelectorAll('video, audio');
   mediaElements.forEach((element) => {
@@ -99,14 +102,15 @@ function updatePlaybackRate(newPlaybackRate) {
   });
 }
 
-function updateReverbWetMix(wetValue) {
-  const dryValue = 1 - wetValue;
-  const compensationValue = Math.sqrt(dryValue);
+function updateReverbWetMix(wetValue) {   //TODO: fine tune reverb
+  const dryValue = Math.cos(wetValue * Math.PI / 2);
+  const wetValueAdjusted = Math.sin(wetValue * Math.PI / 2);
 
-  dryGainNode.gain.setValueAtTime(dryValue * compensationValue, audioContext.currentTime);
-  wetGainNode.gain.setValueAtTime(wetValue, audioContext.currentTime);
-  console.log(`Reverb wet mix updated: dry = ${dryValue * compensationValue}, wet = ${wetValue}`);
+  dryGainNode.gain.setValueAtTime(dryValue, audioContext.currentTime);
+  wetGainNode.gain.setValueAtTime(wetValueAdjusted, audioContext.currentTime);
+  console.log(`Reverb wet mix updated: dry = ${dryValue}, wet = ${wetValueAdjusted}`);
 }
+
 
 function connectMediaElements() {
   const mediaElements = document.querySelectorAll('video, audio');
@@ -128,6 +132,22 @@ document.querySelectorAll('video, audio').forEach((element) => {
 });
 console.log('Event listeners set up.');
 
+// Stop reverb when audio is paused
+document.querySelectorAll('video, audio').forEach((element) => {
+  element.addEventListener('play', () => {
+    browser.storage.local.get(['reverbMix']).then((result) => {
+      const storedReverbMix = result.reverbMix || 0;
+      wetGainNode.gain.setValueAtTime(storedReverbMix, audioContext.currentTime);
+      console.log(`Reverb val ${wetGainNode.gain.value}`);
+    });
+  });
+
+  element.addEventListener('pause', () => {
+    wetGainNode.gain.setValueAtTime(0, audioContext.currentTime);
+    console.log(`Reverb val ${wetGainNode.gain.value}`);
+  });
+});
+
 // Listen for messages from the popup or background script
 browser.runtime.onMessage.addListener((message) => {
   if (message.type === 'updatePlaybackRate') {
@@ -137,3 +157,4 @@ browser.runtime.onMessage.addListener((message) => {
   }
   console.log('Message received:', message);
 });
+

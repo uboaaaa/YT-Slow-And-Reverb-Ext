@@ -8,23 +8,41 @@ document.addEventListener('DOMContentLoaded', () => {
   const reverbValueLabel = document.getElementById('reverb-value');
 
   // Set the slider's value and label to the default values
-  rateSlider.value = defaultRate;
-  rateValueLabel.innerText = `${defaultRate.toFixed(2)}x`;
-  reverbSlider.value = defaultReverbMix;
-  reverbValueLabel.innerText = `${defaultReverbMix.toFixed(2)}`;
+  browser.storage.local.get(['playbackRate', 'reverbMix']).then((result) => {
+    const storedRate = result.playbackRate || defaultRate;
+    const storedReverbMix = result.reverbMix || defaultReverbMix;
+
+    rateSlider.value = storedRate;
+    rateValueLabel.innerText = `${storedRate.toFixed(2)}x`;
+    reverbSlider.value = storedReverbMix;
+    reverbValueLabel.innerText = `${storedReverbMix.toFixed(2)}`;
+
+    changePlaybackRate(parseFloat(storedRate));
+    changeReverbMix(parseFloat(storedReverbMix));
+  });
 
   rateSlider.addEventListener('input', (event) => {
     const newRate = parseFloat(event.target.value).toFixed(2);
     rateValueLabel.innerText = `${newRate}x`;
     changePlaybackRate(parseFloat(newRate));
+    storePlaybackRate(parseFloat(newRate));
   });
 
   reverbSlider.addEventListener('input', (event) => {
     const newReverbMix = parseFloat(event.target.value).toFixed(2);
     reverbValueLabel.innerText = `${newReverbMix}`;
     changeReverbMix(parseFloat(newReverbMix));
+    storeReverbMix(parseFloat(newReverbMix));
   });
 });
+
+function storePlaybackRate(rate) {
+  browser.storage.local.set({ playbackRate: rate });
+}
+
+function storeReverbMix(mix) {
+  browser.storage.local.set({ reverbMix: mix });
+}
 
 function changePlaybackRate(rate) {
   console.log(`Changing playback rate to: ${rate}`);
