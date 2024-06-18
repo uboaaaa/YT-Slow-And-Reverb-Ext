@@ -9,17 +9,20 @@ const CHANNEL_COUNT = 2;
 
 // Create white noise, then IR
 const createWhiteNoiseBuffer = (audioContext) => {
+  const bufferLength = (DECAY_TIME_SECONDS + PRE_DELAY_SECONDS) * audioContext.sampleRate;
   const buffer = audioContext.createBuffer(
     CHANNEL_COUNT,
-    (DECAY_TIME_SECONDS + PRE_DELAY_SECONDS) * audioContext.sampleRate,
+    bufferLength,
     audioContext.sampleRate
   );
-  for (let channelNum = 0; channelNum < CHANNEL_COUNT; channelNum++) {
-    const channelData = buffer.getChannelData(channelNum);
-    for (let i = 0; i < channelData.length; i++) {
+
+  for (let i = 0; i < bufferLength; i++) {
+    for (let channel = 0; channel < CHANNEL_COUNT; channel++) {
+      const channelData = buffer.getChannelData(channel);
       channelData[i] = Math.random() * 2 - 1;
     }
   }
+
   return buffer;
 };
 
@@ -102,7 +105,7 @@ function updatePlaybackRate(newPlaybackRate) {
   });
 }
 
-function updateReverbWetMix(wetValue) {   //TODO: fine tune reverb
+function updateReverbWetMix(wetValue) {   //TODO: recheck reverb method
   const dryValue = Math.cos(wetValue * Math.PI / 2);
   const wetValueAdjusted = Math.sin(wetValue * Math.PI / 2);
 

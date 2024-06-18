@@ -1,18 +1,36 @@
 <!DOCTYPE html>
 <html>
-<head>
-  <title>Playback Control</title>
-  <link rel="stylesheet" href="popup.css">
-</head>
-<body>
-  <label for="rate-slider">Playback Rate: <span id="rate-value">1.00x</span></label>
-  <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00">
 
-  <br>
+  <head>
+    <title>Playback Control</title>
+    <link rel="stylesheet" href="popup.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400..800&display=swap" rel="stylesheet">
+  </head>
 
-  <label for="reverb-slider">Reverb Mix: <span id="reverb-value">0.00</span></label>
-  <input id="reverb-slider" type="range" min="0" max="1" step="0.01" value="0.00">
-  
-  <script src="popup.js"></script>
-</body>
+  <body>
+
+    <div class="slider-container" id="reader-size">
+      <label for="rate-slider">
+        <h4>Speed</h4>
+        <span id="rate-value">1.00</span>
+      </label>
+      <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00" >
+    </div>
+
+    <div class="slider-container" id="reverb-slider-container">
+      <label for="reverb-slider">
+        <h4>Reverb</h4>
+        <span id="reverb-value">0.00</span>
+      </label>
+      <input id="reverb-slider" type="range" min="0" max="1" step="0.01" value="0.00">
+    </div>
+
+    <script src="popup.js"></script>
+  </body>
+
 </html>

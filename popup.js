@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const storedReverbMix = result.reverbMix || defaultReverbMix;
 
     rateSlider.value = storedRate;
-    rateValueLabel.innerText = `${storedRate.toFixed(2)}x`;
+    rateValueLabel.innerText = `${storedRate.toFixed(2)}`;
     reverbSlider.value = storedReverbMix;
     reverbValueLabel.innerText = `${storedReverbMix.toFixed(2)}`;
 
@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   rateSlider.addEventListener('input', (event) => {
     const newRate = parseFloat(event.target.value).toFixed(2);
-    rateValueLabel.innerText = `${newRate}x`;
+    rateValueLabel.innerText = `${newRate}`;
     changePlaybackRate(parseFloat(newRate));
     storePlaybackRate(parseFloat(newRate));
   });
