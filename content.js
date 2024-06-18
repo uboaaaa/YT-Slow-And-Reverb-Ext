@@ -38,7 +38,7 @@ const createImpulseResponse = async (audioContext) => {
 
   const gain = offlineContext.createGain();
   gain.gain.setValueAtTime(0, 0);
-  gain.gain.setValueAtTime(1, PRE_DELAY_SECONDS);
+  gain.gain.setValueAtTime(0.8, PRE_DELAY_SECONDS);
   gain.gain.exponentialRampToValueAtTime(0.00001, DECAY_TIME_SECONDS + PRE_DELAY_SECONDS);
 
   bufferSource.connect(gain);
@@ -155,13 +155,32 @@ document.querySelectorAll('video, audio').forEach((element) => {
   });
 });
 
+// Get audio status
+function getAudioStatus() {
+  const audioElements = document.querySelectorAll('video, audio');
+  if (audioElements.length === 0) {
+    return { status: 'noAudio'};
+  }
+
+  for (const element of audioElements) {
+    if (!element.paused) {
+      return { status: 'playing', audioName: document.title || 'Unknown'};
+    }
+  }
+
+  return { status: 'extensionOff' };
+}
+
 // Listen for messages from the popup or background script
-browser.runtime.onMessage.addListener((message) => {
+browser.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'updatePlaybackRate') {
     updatePlaybackRate(message.playbackRate);
   } else if (message.type === 'updateReverbWetMix') {
     updateReverbWetMix(message.reverbWetMix);
   }
-  console.log('Message received:', message);
+  
+  if (message.type === 'getAudioStatus') {
+    sendResponse(getAudioStatus());
+  }
 });
 

@@ -13,13 +13,21 @@
   </head>
 
   <body>
+    <div class="header-container">
+      <header>
+        <img id="status-icon" src="icons/off.svg" alt="Status Icon" width="20" height="20">
+        <div class="status-text-container">
+          <div id="status-text"></div>
+        </div>
+      </header>
+    </div>
 
     <div class="slider-container" id="reader-size">
       <label for="rate-slider">
         <h4>Speed</h4>
         <span id="rate-value">1.00</span>
       </label>
-      <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00" >
+      <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00">
     </div>
 
     <div class="slider-container" id="reverb-slider-container">

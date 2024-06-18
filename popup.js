@@ -1,3 +1,36 @@
+//Update header
+function updateStatus(status) {
+  const statusText = document.getElementById('status-text');
+  const statusIcon = document.getElementById('status-icon');
+
+  statusText.innerText = status;
+
+  if (status.includes('NOW PLAYING')) {
+    statusIcon.src = 'icons/playing.svg';
+  } else if (status === 'No audio detected!') {
+    statusIcon.src = 'icons/noAudio.svg';
+  } else if (status === 'Extension is off!') {
+    statusIcon.src = 'icons/off.svg';
+  }
+}
+
+function getAudioStatus() {
+  browser.tabs.query({ active: true, currentWindow: true}).then((tabs) => {
+    const activeTab = tabs[0];
+    browser.tabs.sendMessage(activeTab.id, { type: 'getAudioStatus' }).then((response) => {
+      if (response.status == 'playing') {
+        updateStatus(`NOW PLAYING: ${response.audioName}`);
+      } else if (response.status == 'noAudio') {
+        updateStatus(`No audio detected!`);
+      } else if (response.status == 'extensionOff') {
+        updateStatus(`Extension is off!`);
+      }
+    }).catch((error) => {
+      console.error(`Error getting audio status from tab ${activeTab.id}: ${error}`);
+    });
+  });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const defaultRate = 1.0;
   const defaultReverbMix = 0.0;
@@ -34,6 +67,8 @@ document.addEventListener('DOMContentLoaded', () => {
     changeReverbMix(parseFloat(newReverbMix));
     storeReverbMix(parseFloat(newReverbMix));
   });
+
+  getAudioStatus();
 });
 
 function storePlaybackRate(rate) {
