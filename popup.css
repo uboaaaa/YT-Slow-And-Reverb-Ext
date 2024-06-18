@@ -42,13 +42,14 @@ header {
   margin: 0;
   color: #24282c;
   display: inline-block;
-  animation: scroll-left 13s linear infinite;
+  white-space: nowrap;
+  animation: scroll-left 23s linear infinite;
 }
 
 
 @keyframes scroll-left {
   0% {
-    transform: translateX(100%);
+    transform: translateX(25%);
   }
   100% {
     transform: translateX(-100%);
