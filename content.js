@@ -132,16 +132,20 @@ document.querySelectorAll('video, audio').forEach((element) => {
 });
 console.log('Event listeners set up.');
 
-// Stop reverb when audio is paused
+// Make playbackRate and reverb mix persist across pages
 document.querySelectorAll('video, audio').forEach((element) => {
   element.addEventListener('play', () => {
-    browser.storage.local.get(['reverbMix']).then((result) => {
+    browser.storage.local.get(['playbackRate', 'reverbMix']).then((result) => {
       const storedReverbMix = result.reverbMix || 0;
-      wetGainNode.gain.setValueAtTime(storedReverbMix, audioContext.currentTime);
+      const storedPlaybackRate = result.playbackRate || 1.0;
+
+      updateReverbWetMix(storedReverbMix);
+      updatePlaybackRate(storedPlaybackRate);
       console.log(`Reverb val ${wetGainNode.gain.value}`);
     });
   });
 
+// Stop reverb when audio is paused
   element.addEventListener('pause', () => {
     wetGainNode.gain.setValueAtTime(0, audioContext.currentTime);
     console.log(`Reverb val ${wetGainNode.gain.value}`);
