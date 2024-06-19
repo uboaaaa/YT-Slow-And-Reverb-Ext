@@ -2,7 +2,7 @@ body {
   font-family: "Arial", sans-serif;
   background-color: #24282c;
   color: #e95d50;
-  padding: 40px 10px 10px;
+  padding: 40px 5px 10px;
   border-radius: 30px;
   width: 200px;
   min-height: 50px;
@@ -16,7 +16,7 @@ h4 {
   font-weight: 730;
   font-style: normal;
   display: inline;
-  font-size: 20px;
+  font-size: 17px;
   margin: 0;
 }
 
@@ -43,7 +43,7 @@ header {
   color: #24282c;
   display: inline-block;
   white-space: nowrap;
-  animation: scroll-left 23s linear infinite;
+  animation: scroll-left 19s linear infinite;
 }
 
 
@@ -107,7 +107,7 @@ header {
 input[type="range"] {
   -webkit-appearance: none;
   appearance: none;
-  height: 4px;
+  height: 3px;
   background: #e95d50;
   outline: none;
   transition: opacity .15s ease-in-out;
@@ -124,10 +124,17 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 input[type="range"]::-moz-range-thumb {
-  width: 13px;
-  height: 13 px;
+  width: 14px;
+  height: 14px;
   background: #e95d50;
   cursor: pointer;
   border: none;
   border-radius: 0.11px;
 }
+
+body.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+

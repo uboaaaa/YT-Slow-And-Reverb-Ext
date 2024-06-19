@@ -5,12 +5,14 @@ function updateStatus(status) {
 
   statusText.innerText = status;
 
-  if (status.includes('NOW PLAYING')) {
-    statusIcon.src = 'icons/playing.svg';
-  } else if (status === 'No audio detected!') {
+  if (status === 'No audio detected!') {
     statusIcon.src = 'icons/noAudio.svg';
   } else if (status === 'Extension is off!') {
     statusIcon.src = 'icons/off.svg';
+    document.body.classList.add('disabled');
+  } else {
+    statusIcon.src = 'icons/playing.svg';
+    document.body.classList.remove('disabled');
   }
 }
 
@@ -19,7 +21,7 @@ function getAudioStatus() {
     const activeTab = tabs[0];
     browser.tabs.sendMessage(activeTab.id, { type: 'getAudioStatus' }).then((response) => {
       if (response.status == 'playing') {
-        updateStatus(`NOW PLAYING: ${response.audioName}`);
+        updateStatus(`${response.audioName}`);
       } else if (response.status == 'noAudio') {
         updateStatus(`No audio detected!`);
       } else if (response.status == 'extensionOff') {
