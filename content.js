@@ -138,13 +138,15 @@ console.log('Event listeners set up.');
 // Make playbackRate and reverb mix persist across pages
 document.querySelectorAll('video, audio').forEach((element) => {
   element.addEventListener('play', () => {
-    browser.storage.local.get(['playbackRate', 'reverbMix']).then((result) => {
-      const storedReverbMix = result.reverbMix || 0;
-      const storedPlaybackRate = result.playbackRate || 1.0;
-
-      updateReverbWetMix(storedReverbMix);
-      updatePlaybackRate(storedPlaybackRate);
-      console.log(`Reverb val ${wetGainNode.gain.value}`);
+    browser.storage.local.get(['isExtensionOn', 'playbackRate', 'reverbMix']).then((result) => {
+      if (result.isExtensionOn) {
+        const storedReverbMix = result.reverbMix || 0;
+        const storedPlaybackRate = result.playbackRate || 1.0;
+  
+        updateReverbWetMix(storedReverbMix);
+        updatePlaybackRate(storedPlaybackRate);
+        console.log(`Reverb val ${wetGainNode.gain.value}`);
+      }
     });
   });
 

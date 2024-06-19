@@ -192,9 +192,16 @@ input[type="range"]::-moz-range-thumb {
   transform: translateY(1px);
 }
 
-body.disabled { /* TODO: toggle button must be functional when body disabled */
+body.no-audio { 
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
 
+body.extension-off .header-container,
+body.extension-off .slider-container,
+body.extension-off .reset-container {
+  opacity: 0.5;
+  cursor: not-allowed;
+  pointer-events: none;
+}

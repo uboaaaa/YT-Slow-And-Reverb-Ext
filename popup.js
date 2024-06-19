@@ -1,3 +1,5 @@
+let isExtensionOn = true;
+
 //Update header
 function updateStatus(status) {
   const statusText = document.getElementById('status-text');
@@ -7,15 +9,22 @@ function updateStatus(status) {
 
   if (status === 'No audio detected!') {
     statusIcon.src = 'icons/noAudio.svg';
-    document.body.classList.add('disabled');
+    document.body.classList.add('no-audio');
+    document.body.classList.remove('extension-off');
+
   } else if (status === 'Audio paused!') {
     statusIcon.src = 'icons/pause.svg'; //TODO: replace placeholder icon
+    document.body.classList.remove('no-audio', 'extension-off');
+
   } else if (status === 'Extension is off!') {
     statusIcon.src = 'icons/off.svg';
-    document.body.classList.add('disabled');
+    document.body.classList.add('extension-off');
+    document.body.classList.remove('no-audio');
+
   } else {
     statusIcon.src = 'icons/playing.svg';
-    document.body.classList.remove('disabled');
+    document.body.classList.remove('no-audio', 'extension-off');
+
   }
 }
 
@@ -23,14 +32,19 @@ function getAudioStatus() {
   browser.tabs.query({ active: true, currentWindow: true}).then((tabs) => {
     const activeTab = tabs[0];
     browser.tabs.sendMessage(activeTab.id, { type: 'getAudioStatus' }).then((response) => {
+
       if (response.status == 'playing') {
         updateStatus(`${response.audioName}`);
+
       } else if (response.status == 'noAudio') {
         updateStatus(`No audio detected!`);
+
       } else if (response.status == 'audioDetected') {
         updateStatus(`Audio paused!`);
+
       } else if (response.status == 'extensionOff') {
         updateStatus(`Extension is off!`);
+
       }
     }).catch((error) => {
       console.error(`Error getting audio status from tab ${activeTab.id}: ${error}`);
@@ -38,7 +52,28 @@ function getAudioStatus() {
   });
 }
 
-document.addEventListener('DOMContentLoaded', () => {
+function toggleExtension() {
+  if (isExtensionOn) { 
+    //extension on -> off
+    isExtensionOn = false;
+    changePlaybackRate(1.0);
+    changeReverbMix(0.0);
+    updateStatus('Extension is off!');
+    browser.storage.local.set({ isExtensionOn: false });
+  } else{
+    //extension off -> on
+    isExtensionOn = true 
+    browser.storage.local.set({ isExtensionOn: true });
+    const rateSlider = document.getElementById('rate-slider');
+    const reverbSlider = document.getElementById('reverb-slider');
+    changePlaybackRate(parseFloat(rateSlider.value));
+    changeReverbMix(parseFloat(reverbSlider.value));
+    getAudioStatus();
+    document.body.classList.remove('extension-off');
+  }
+}
+
+function defaultSettings() {
   const defaultRate = 1.0;
   const defaultReverbMix = 0.0;
 
@@ -47,8 +82,27 @@ document.addEventListener('DOMContentLoaded', () => {
   const reverbSlider = document.getElementById('reverb-slider');
   const reverbValueLabel = document.getElementById('reverb-value');
 
-  // Set the slider's value and label to the default values
-  browser.storage.local.get(['playbackRate', 'reverbMix']).then((result) => {
+  changePlaybackRate(defaultRate);
+  changeReverbMix(defaultReverbMix);
+  storePlaybackRate(defaultRate);
+  storeReverbMix(defaultReverbMix);
+
+  rateSlider.value = defaultRate;
+  rateValueLabel.innerText = `${defaultRate.toFixed(2)}`;
+  reverbSlider.value = defaultReverbMix;
+  reverbValueLabel.innerText = `${defaultReverbMix.toFixed(2)}`;
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const defaultRate = 1.0;
+  const defaultReverbMix = 0.0;
+  const rateSlider = document.getElementById('rate-slider');
+  const rateValueLabel = document.getElementById('rate-value');
+  const reverbSlider = document.getElementById('reverb-slider');
+  const reverbValueLabel = document.getElementById('reverb-value');
+
+  // Load the extension state and stored settings from storage
+  browser.storage.local.get(['isExtensionOn', 'playbackRate', 'reverbMix']).then((result) => {
+    isExtensionOn = result.isExtensionOn !== undefined ? result.isExtensionOn : true;
     const storedRate = result.playbackRate || defaultRate;
     const storedReverbMix = result.reverbMix || defaultReverbMix;
 
@@ -57,25 +111,39 @@ document.addEventListener('DOMContentLoaded', () => {
     reverbSlider.value = storedReverbMix;
     reverbValueLabel.innerText = `${storedReverbMix.toFixed(2)}`;
 
-    changePlaybackRate(parseFloat(storedRate));
-    changeReverbMix(parseFloat(storedReverbMix));
+    if (isExtensionOn) {
+      changePlaybackRate(parseFloat(storedRate));
+      changeReverbMix(parseFloat(storedReverbMix));
+      getAudioStatus();
+    } else {
+      document.body.classList.add('extension-off');
+      updateStatus('Extension is off!');
+    }
   });
 
   rateSlider.addEventListener('input', (event) => {
-    const newRate = parseFloat(event.target.value).toFixed(2);
-    rateValueLabel.innerText = `${newRate}`;
-    changePlaybackRate(parseFloat(newRate));
-    storePlaybackRate(parseFloat(newRate));
+    if (isExtensionOn) {
+      const newRate = parseFloat(event.target.value).toFixed(2);
+      rateValueLabel.innerText = `${newRate}`;
+      changePlaybackRate(parseFloat(newRate));
+      storePlaybackRate(parseFloat(newRate));
+    }
   });
 
   reverbSlider.addEventListener('input', (event) => {
-    const newReverbMix = parseFloat(event.target.value).toFixed(2);
-    reverbValueLabel.innerText = `${newReverbMix}`;
-    changeReverbMix(parseFloat(newReverbMix));
-    storeReverbMix(parseFloat(newReverbMix));
+    if (isExtensionOn) {
+      const newReverbMix = parseFloat(event.target.value).toFixed(2);
+      reverbValueLabel.innerText = `${newReverbMix}`;
+      changeReverbMix(parseFloat(newReverbMix));
+      storeReverbMix(parseFloat(newReverbMix));
+    }
   });
 
-  getAudioStatus();
+  const toggleButton = document.getElementById("toggle-button");
+  toggleButton.addEventListener('click', toggleExtension);
+
+  const resetButton = document.getElementById("reset-button");
+  resetButton.addEventListener('click', defaultSettings);
 });
 
 function storePlaybackRate(rate) {
