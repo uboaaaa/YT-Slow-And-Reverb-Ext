@@ -1,6 +1,13 @@
 body {
-  font-family: "Arial", sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  margin: 0;
   background-color: #24282c;
+}
+
+.main-container {
   color: #e95d50;
   padding: 40px 5px 10px;
   border-radius: 30px;
@@ -8,6 +15,8 @@ body {
   min-height: 50px;
   overflow: hidden;
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 h4 {
@@ -24,7 +33,7 @@ label {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 5px;
+  margin-bottom: 4px;
 }
 
 header {
@@ -63,7 +72,7 @@ header {
 
 .slider-container {
   margin-bottom: 30px;
-  margin-top: 15px;
+  margin-top: 12px;
   width: 100%;
   padding: 0 10px;
   box-sizing: border-box;
@@ -76,17 +85,18 @@ header {
 
 .header-container {
   background-color: #e95d50;
-  width: 100%;
+  width: calc(100% + 10px);
   padding: 5px 10px;
   box-sizing: border-box;
   display: flex;
   align-items: center;
-  position: absolute;
+  position: fixed;
   border-radius: 5px;
   top: 0;
-  left: 0;
-  right: 0;
+  left: -5px;
+  right: -5px;
 }
+
 
 .status-text-container {
   flex: 1;
@@ -139,6 +149,7 @@ input[type="range"]::-moz-range-thumb {
   width: 100%;
   padding: 10px;
   box-sizing: border-box;
+
 }
 
 #toggle-button, #reset-button {
@@ -160,7 +171,7 @@ input[type="range"]::-moz-range-thumb {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-right: 15px;
+  margin-right: 9px;
 }
 
 .reset-container {
@@ -174,6 +185,11 @@ input[type="range"]::-moz-range-thumb {
 #toggle-icon, #reset-icon {
   width: 20px;
   height: 20px;
+}
+
+#toggle-button:active, #reset-button:active {
+  background-color: #c54a3f;
+  transform: translateY(1px);
 }
 
 body.disabled { /* TODO: toggle button must be functional when body disabled */
