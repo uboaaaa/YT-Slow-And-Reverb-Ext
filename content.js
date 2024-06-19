@@ -168,7 +168,7 @@ function getAudioStatus() {
     }
   }
 
-  return { status: 'extensionOff' };
+  return { status: 'audioDetected' };
 }
 
 // Listen for messages from the popup or background script

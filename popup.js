@@ -7,6 +7,9 @@ function updateStatus(status) {
 
   if (status === 'No audio detected!') {
     statusIcon.src = 'icons/noAudio.svg';
+    document.body.classList.add('disabled');
+  } else if (status === 'Audio paused!') {
+    statusIcon.src = 'icons/pause.svg'; //TODO: replace placeholder icon
   } else if (status === 'Extension is off!') {
     statusIcon.src = 'icons/off.svg';
     document.body.classList.add('disabled');
@@ -24,6 +27,8 @@ function getAudioStatus() {
         updateStatus(`${response.audioName}`);
       } else if (response.status == 'noAudio') {
         updateStatus(`No audio detected!`);
+      } else if (response.status == 'audioDetected') {
+        updateStatus(`Audio paused!`);
       } else if (response.status == 'extensionOff') {
         updateStatus(`Extension is off!`);
       }
