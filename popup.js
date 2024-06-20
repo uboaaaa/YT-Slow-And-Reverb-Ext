@@ -73,25 +73,37 @@ function toggleExtension() {
   }
 }
 
-function defaultSettings() {
+function rateDefault() {
   const defaultRate = 1.0;
-  const defaultReverbMix = 0.0;
+
 
   const rateSlider = document.getElementById('rate-slider');
   const rateValueLabel = document.getElementById('rate-value');
-  const reverbSlider = document.getElementById('reverb-slider');
-  const reverbValueLabel = document.getElementById('reverb-value');
+
 
   changePlaybackRate(defaultRate);
-  changeReverbMix(defaultReverbMix);
+
   storePlaybackRate(defaultRate);
-  storeReverbMix(defaultReverbMix);
+
 
   rateSlider.value = defaultRate;
   rateValueLabel.innerText = `${defaultRate.toFixed(2)}`;
+
+}
+
+function reverbDefault() {
+  const defaultReverbMix = 0.0;
+
+  const reverbSlider = document.getElementById('reverb-slider');
+  const reverbValueLabel = document.getElementById('reverb-value');
+
+  changeReverbMix(defaultReverbMix);
+  storeReverbMix(defaultReverbMix);
+
   reverbSlider.value = defaultReverbMix;
   reverbValueLabel.innerText = `${defaultReverbMix.toFixed(2)}`;
 }
+
 document.addEventListener('DOMContentLoaded', () => {
   const defaultRate = 1.0;
   const defaultReverbMix = 0.0;
@@ -142,8 +154,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const toggleButton = document.getElementById("toggle-button");
   toggleButton.addEventListener('click', toggleExtension);
 
-  const resetButton = document.getElementById("reset-button");
-  resetButton.addEventListener('click', defaultSettings);
+  const resetRateButton = document.getElementById("reset-rate");
+  resetRateButton.addEventListener('click', rateDefault);
+
+  const resetReverbButton = document.getElementById("reset-reverb");
+  resetReverbButton.addEventListener('click', reverbDefault);
 });
 
 function storePlaybackRate(rate) {
