@@ -2,7 +2,7 @@
 <html>
 
   <head>
-    <title>Playback Control</title>
+    <title>Slow and Reverb Controller</title>
     <link rel="stylesheet" href="popup.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -23,20 +23,29 @@
       </header>
     </div>
 
-    <div class="slider-container" id="reader-size">
+    <div class="slider-container" id="rate-slider-container">
       <label for="rate-slider">
         <h4>Speed</h4>
         <span id="rate-value">1.00</span>
       </label>
-      <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00">
+      <div class="slider-wrapper">
+        <input id="rate-slider" type="range" min="0.5" max="2" step="0.01" value="1.00">
+        <button id="reset-rate">
+          <img id="reset-icon" src="icons/reset.svg" alt="Reset rate">
+        </button>
+      </div>
     </div>
-
     <div class="slider-container" id="reverb-slider-container">
       <label for="reverb-slider">
         <h4>Reverb</h4>
         <span id="reverb-value">0.00</span>
       </label>
-      <input id="reverb-slider" type="range" min="0" max="1" step="0.01" value="0.00">
+      <div class="slider-wrapper">
+        <input id="reverb-slider" type="range" min="0" max="1" step="0.01" value="0.00">
+        <button id="reset-reverb">
+          <img id="reset-icon" src="icons/reset.svg" alt="Reset reverb">
+        </button>
+      </div>
     </div>
 
     <div class="button-container">
@@ -47,14 +56,9 @@
         </button>
       </div>
 
-      <div class="reset-container">
-        <button id="reset-button">
-          <img id="reset-icon" src="icons/reset.svg" alt="Reset icon">
-        </button>
-      </div>
-
     </div>
   </div>
+
     <script src="popup.js"></script>
     
   </body>

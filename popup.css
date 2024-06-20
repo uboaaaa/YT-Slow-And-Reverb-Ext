@@ -1,3 +1,4 @@
+/* BODY */
 body {
   display: flex;
   justify-content: center;
@@ -19,6 +20,7 @@ body {
   flex-direction: column;
 }
 
+/* TEXT */
 h4 {
   font-family: "Syne", sans-serif;
   font-optical-sizing: auto;
@@ -36,6 +38,18 @@ label {
   margin-bottom: 4px;
 }
 
+#rate-value,
+#reverb-value {
+  font-family: "Roboto Mono", sans-serif;
+  font-optical-sizing: auto;
+  font-weight: 730;
+  font-style: normal;
+  display: inline;
+  font-size: 15px;
+}
+
+
+/* HEADER */
 header {
   display: flex;
   align-items: center;
@@ -55,6 +69,11 @@ header {
   animation: scroll-left 16s linear infinite;
 }
 
+.status-text-container {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+}
 
 @keyframes scroll-left {
   0% {
@@ -63,24 +82,6 @@ header {
   100% {
     transform: translateX(-100%);
   }
-}
-
-#status-icon {
-  vertical-align: middle;
-  margin-right: 10px;
-}
-
-.slider-container {
-  margin-bottom: 30px;
-  margin-top: 12px;
-  width: 100%;
-  padding: 0 10px;
-  box-sizing: border-box;
-}
-
-#rate-slider,
-#reverb-slider {
-  width: 100%;
 }
 
 .header-container {
@@ -98,20 +99,28 @@ header {
 }
 
 
-.status-text-container {
-  flex: 1;
-  overflow: hidden;
-  white-space: nowrap;
+#status-icon {
+  vertical-align: middle;
+  margin-right: 10px;
 }
 
-#rate-value,
-#reverb-value {
-  font-family: "Roboto Mono", sans-serif;
-  font-optical-sizing: auto;
-  font-weight: 730;
-  font-style: normal;
-  display: inline;
-  font-size: 15px;
+/* SLIDERS */
+.slider-container {
+  margin-bottom: 30px;
+  margin-top: 5px;
+  width: 100%;
+  padding: 0 10px;
+  box-sizing: border-box;
+}
+
+.slider-wrapper {
+  display: flex;
+  align-items: center;
+}
+
+#rate-slider,
+#reverb-slider {
+  width: 100%;
 }
 
 input[type="range"] {
@@ -142,6 +151,8 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 0.11px;
 }
 
+
+/* BUTTONS */
 .button-container {
   display: flex;
   justify-content: space-between;
@@ -152,7 +163,16 @@ input[type="range"]::-moz-range-thumb {
 
 }
 
-#toggle-button, #reset-button {
+button {
+  background-color: Transparent;
+  background-repeat:no-repeat;
+  border: none;
+  cursor:pointer;
+  overflow: hidden;
+  outline:none;
+}
+
+#toggle-button {
   background-color: #e95d50;
   border: none;
   border-radius: 5px;
@@ -167,40 +187,50 @@ input[type="range"]::-moz-range-thumb {
 
 
 .toggle-container {
-  flex: 7;
+  flex: 1;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-right: 9px;
+  margin-top: -7px;
 }
 
-.reset-container {
-  flex: 3;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin-left: 5px;
+
+#toggle-icon {
+  size: 20px;
 }
 
-#toggle-icon, #reset-icon {
-  width: 20px;
-  height: 20px;
+#reset-icon {
+  size: 20px; 
 }
 
-#toggle-button:active, #reset-button:active {
+#toggle-button:active {
   background-color: #c54a3f;
   transform: translateY(1px);
 }
 
+#reset-rate, #reset-reverb {
+  background-color: #24282c;
+  margin-left: 8px;
+}
+
+#reset-rate:focus, #reset-reverb:focus {
+  outline: none;
+}
+
+#reset-rate:active, #reset-reverb:active {
+  transform: translateY(2px);
+}
+/* SPECIAL CONDITIONS */
+/* Audio not detected */
 body.no-audio { 
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
 }
 
+/* Extension off */
 body.extension-off .header-container,
-body.extension-off .slider-container,
-body.extension-off .reset-container {
+body.extension-off .slider-container {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;

@@ -52,7 +52,7 @@ const createImpulseResponse = async (audioContext) => {
 
 // Initialize audio context and nodes
 // media --> dry --> output (playbackRate adjustment path)
-// media --> wet --> convolver --> output (reverb adjustment path) 
+// media --> convolver --> wet --> output (reverb adjustment path) 
 async function initializeAudio() {
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
   console.log('Audio context created.');
@@ -82,6 +82,10 @@ initializeAudio();
 
 function connectMediaElement(element) {
   if (!element.sourceNode) {
+    console.log('Connecting media element:', element);
+    console.log('Source:', element.src);
+    console.log('Volume:', element.volume);
+
     const sourceNode = audioContext.createMediaElementSource(element);
     
     // Connect source node to both dry and wet paths
