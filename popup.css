@@ -12,7 +12,7 @@ body {
   color: #e95d50;
   padding: 40px 5px 10px;
   border-radius: 30px;
-  width: 200px;
+  width: 170px;
   min-height: 50px;
   overflow: hidden;
   position: relative;
@@ -181,7 +181,7 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-  width: 100%;
+  width: 50%;
   height: 30%;
 }
 
@@ -191,7 +191,7 @@ button {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-top: -7px;
+  margin-top: -12px;
 }
 
 
