@@ -146,12 +146,11 @@ document.querySelectorAll('video, audio').forEach((element) => {
       if (result.isExtensionOn) {
         const storedReverbMix = result.reverbMix || 0;
         const storedPlaybackRate = result.playbackRate || 1.0;
-  
         updateReverbWetMix(storedReverbMix);
         updatePlaybackRate(storedPlaybackRate);
-        console.log(`Reverb val ${wetGainNode.gain.value}`);
       }
     });
+    connectMediaElements();
   });
 
 // Stop reverb when audio is paused
