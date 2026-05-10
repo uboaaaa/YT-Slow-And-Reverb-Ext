@@ -78,9 +78,13 @@ async function initializeAudio() {
   convolverNode.connect(wetGainNode);
 }
 
-initializeAudio();
+const audioReady = initializeAudio();
 
 function connectMediaElement(element) {
+  if (!convolverNode) {
+    return;
+  }
+
   if (!element.sourceNode) {
     const sourceNode = audioContext.createMediaElementSource(element);
 
@@ -91,15 +95,16 @@ function connectMediaElement(element) {
     element.sourceNode = sourceNode;
     element.preservesPitch = false;
   }
+
+  addMediaElementListeners(element);
 }
 
 // Updating functions
 function updatePlaybackRate(newPlaybackRate) {
   const mediaElements = document.querySelectorAll("video, audio");
   mediaElements.forEach((element) => {
-    if (element.sourceNode) {
-      element.playbackRate = newPlaybackRate;
-    }
+    element.preservesPitch = false;
+    element.playbackRate = newPlaybackRate;
   });
 }
 
@@ -123,34 +128,61 @@ function connectMediaElements() {
 const observer = new MutationObserver(connectMediaElements);
 observer.observe(document.body, { childList: true, subtree: true });
 
-// Reconnect media elements on playback start (if not already connected)
-document.querySelectorAll("video, audio").forEach((element) => {
-  element.addEventListener("play", () => {
-    connectMediaElements();
-  });
-});
+const mediaElementsWithListeners = new WeakSet();
 
-// Make playbackRate and reverb mix persist across pages
-document.querySelectorAll("video, audio").forEach((element) => {
+function applyStoredSettingsToElement(element) {
+  browser.storage.local
+    .get(["isExtensionOn", "playbackRate", "reverbMix"])
+    .then((result) => {
+      if (result.isExtensionOn === false) {
+        element.playbackRate = 1.0;
+        return;
+      }
+
+      const storedReverbMix = result.reverbMix || 0;
+      const storedPlaybackRate = result.playbackRate || 1.0;
+      updateReverbWetMix(storedReverbMix);
+      element.preservesPitch = false;
+      element.playbackRate = storedPlaybackRate;
+    });
+}
+
+function addMediaElementListeners(element) {
+  if (mediaElementsWithListeners.has(element)) {
+    return;
+  }
+
+  mediaElementsWithListeners.add(element);
+
   element.addEventListener("play", () => {
-    browser.storage.local
-      .get(["isExtensionOn", "playbackRate", "reverbMix"])
-      .then((result) => {
-        if (result.isExtensionOn) {
-          const storedReverbMix = result.reverbMix || 0;
-          const storedPlaybackRate = result.playbackRate || 1.0;
-          updateReverbWetMix(storedReverbMix);
-          updatePlaybackRate(storedPlaybackRate);
-        }
-      });
     connectMediaElements();
+    applyStoredSettingsToElement(element);
+  });
+
+  element.addEventListener("loadedmetadata", () => {
+    applyStoredSettingsToElement(element);
+  });
+
+  element.addEventListener("ratechange", () => {
+    browser.storage.local.get(["isExtensionOn", "playbackRate"]).then((result) => {
+      if (result.isExtensionOn === false) {
+        return;
+      }
+
+      const storedPlaybackRate = result.playbackRate || 1.0;
+      if (element.playbackRate !== storedPlaybackRate) {
+        element.playbackRate = storedPlaybackRate;
+      }
+    });
   });
 
   // Stop reverb when audio is paused
   element.addEventListener("pause", () => {
     wetGainNode.gain.setValueAtTime(0, audioContext.currentTime);
   });
-});
+}
+
+audioReady.then(connectMediaElements);
 
 // Get audio status
 function getAudioStatus() {
