@@ -124,29 +124,35 @@ header {
 /* PRESETS */
 .preset-container {
   display: flex;
-  gap: 6px;
-  padding: 0 10px;
-  margin: 8px 0 14px;
+  align-items: stretch;
+  margin: 0 10px 20px;
+  border: 2px solid #e95d50;
+  border-radius: 999px;
+  overflow: hidden;
   box-sizing: border-box;
 }
 
 .preset-btn {
   flex: 1;
-  font-family: "Syne", sans-serif;
+  font-family: "Roboto Mono", monospace;
   font-weight: 700;
-  font-size: 10px;
-  color: #24282c;
-  background-color: #e95d50;
+  font-size: 13px;
+  color: #e95d50;
+  background-color: transparent;
   border: none;
-  border-radius: 4px;
-  padding: 5px 2px;
+  border-radius: 0;
+  padding: 4px 2px;
   cursor: pointer;
   white-space: nowrap;
+  text-align: center;
+}
+
+.preset-btn + .preset-btn {
+  border-left: 2px solid #e95d50;
 }
 
 .preset-btn:active {
-  background-color: #c54a3f;
-  transform: translateY(1px);
+  background-color: rgba(233, 93, 80, 0.2);
 }
 
 /* SLIDERS */
@@ -300,4 +306,35 @@ body.drm-blocked #reverb-slider-container,
 body.drm-blocked .preset-container {
   opacity: 0.5;
   pointer-events: none;
+}
+
+/* SUPPORT LINKS */
+.support-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin: 6px 10px 2px;
+}
+
+.support-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #e95d50;
+  text-decoration: none;
+  border: none;
+  padding: 2px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.support-link:hover {
+  opacity: 1;
+  background-color: transparent;
+}
+
+.support-link:active {
+  opacity: 1;
+  background-color: transparent;
+  transform: translateY(1px);
 }
