@@ -232,6 +232,45 @@ document.addEventListener("DOMContentLoaded", () => {
     button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });
 
+  const addWheelSupport = (container, slider, label, store) => {
+    container.addEventListener(
+      "wheel",
+      (event) => {
+        if (!isExtensionOn) return;
+        event.preventDefault();
+
+        const step = parseFloat(slider.step) || 0.05;
+        const direction = event.deltaY < 0 ? 1 : -1;
+        const min = parseFloat(slider.min);
+        const max = parseFloat(slider.max);
+
+        // Round to cents so repeated steps don't accumulate float vals.
+        const next =
+          Math.round(
+            Math.min(max, Math.max(min, parseFloat(slider.value) + direction * step)) * 100
+          ) / 100;
+
+        slider.value = next;
+        label.innerText = next.toFixed(2);
+        store(next);
+      },
+      { passive: false }
+    );
+  };
+
+  addWheelSupport(
+    document.getElementById("rate-slider-container"),
+    rateSlider,
+    rateValueLabel,
+    storePlaybackRate
+  );
+  addWheelSupport(
+    document.getElementById("reverb-slider-container"),
+    reverbSlider,
+    reverbValueLabel,
+    storeReverbMix
+  );
+
   const toggleButton = document.getElementById("toggle-button");
   toggleButton.addEventListener("click", toggleExtension);
 
