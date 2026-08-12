@@ -1,3 +1,20 @@
+/* FONTS (bundled: MV3 extension-page CSP blocks remote stylesheets) */
+@font-face {
+  font-family: "Syne";
+  font-style: normal;
+  font-weight: 400 800;
+  font-display: swap;
+  src: url("fonts/Syne-Variable.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Roboto Mono";
+  font-style: normal;
+  font-weight: 100 700;
+  font-display: swap;
+  src: url("fonts/RobotoMono-Variable.woff2") format("woff2");
+}
+
 /* BODY */
 body {
   display: flex;
@@ -234,4 +251,15 @@ body.extension-off .slider-container {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;
+}
+
+/* No site access: sliders dimmed, header stays clickable to grant */
+body.no-access .slider-container,
+body.no-access .button-container {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+body.no-access .header-container {
+  cursor: pointer;
 }

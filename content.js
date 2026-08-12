@@ -1,5 +1,6 @@
-// Bridge: injects the engine into the page, relays settings from storage down
-// to it, and answers the popup from the engine's status reports.
+// Bridge: relays settings from storage down to the engine (which the browser
+// injects into the page via world: "MAIN"), and answers the popup from the
+// engine's status reports.
 
 const FROM_CONTENT_SCRIPT = "slow-and-reverb";
 const FROM_PAGE = "slow-and-reverb-page";
@@ -11,18 +12,18 @@ let storedReverbMix = 0.0;
 // Latest status pushed up by the engine.
 let engineStatus = { hasMedia: false, playing: false };
 
-// Inline source text executes synchronously on append, so the engine's patches
-// are in place before any page script runs (with run_at document_start).
-(function injectEngine() {
-  try {
-    const script = document.createElement("script");
-    script.textContent = `(${slowAndReverbPageHook.toString()})();`;
-    (document.head || document.documentElement).appendChild(script);
-    script.remove();
-  } catch (error) {
-    console.warn("[Slow and Reverb] Could not install the engine.", error);
-  }
-})();
+// Wake the background event page and prove it's reachable. Without it, the
+// CORS header rewrite is dead and cross-origin reverb fails.
+browser.runtime
+  .sendMessage({ type: "ping" })
+  .then((reply) => {
+    if (!reply || !reply.ok) {
+      console.warn("[Slow and Reverb] background gave an unexpected reply");
+    }
+  })
+  .catch(() => {
+    console.warn("[Slow and Reverb] background unreachable");
+  });
 
 function sendSettings() {
   window.postMessage(

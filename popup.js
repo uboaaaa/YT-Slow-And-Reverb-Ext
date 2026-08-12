@@ -24,6 +24,12 @@ function updateStatus(status) {
     statusIcon.src = "icons/noAudio.svg";
     document.body.classList.add("no-audio");
     document.body.classList.remove("extension-off");
+  } else if (status === "Click here to grant site access!") {
+    // MV3: host permissions are revocable, and nothing works without them.
+    // Own class: extension-off would make the header unclickable.
+    statusIcon.src = "icons/off.svg";
+    document.body.classList.add("no-access");
+    document.body.classList.remove("no-audio", "extension-off");
   } else if (status === "Audio paused!") {
     statusIcon.src = "icons/pause.svg"; //TODO: replace placeholder icon
     document.body.classList.remove("no-audio", "extension-off");
@@ -35,6 +41,27 @@ function updateStatus(status) {
     statusIcon.src = "icons/playing.svg";
     document.body.classList.remove("no-audio", "extension-off");
   }
+}
+
+// MV3 host permissions can be denied or revoked per user choice; without them
+// no content script runs and the extension can do nothing on the page.
+function checkSiteAccess() {
+  return browser.permissions
+    .contains({ origins: ["<all_urls>"] })
+    .catch(() => false);
+}
+
+function requestSiteAccess() {
+  // Must be called from a user-gesture handler (the header click).
+  browser.permissions
+    .request({ origins: ["<all_urls>"] })
+    .then((granted) => {
+      if (granted) {
+        document.body.classList.remove("no-access");
+        getAudioStatus();
+      }
+    })
+    .catch(() => {});
 }
 
 function getAudioStatus() {
@@ -129,13 +156,27 @@ document.addEventListener("DOMContentLoaded", () => {
       reverbSlider.value = storedReverbMix;
       reverbValueLabel.innerText = `${storedReverbMix.toFixed(2)}`;
 
-      if (isExtensionOn) {
-        getAudioStatus();
-      } else {
+      if (!isExtensionOn) {
         document.body.classList.add("extension-off");
         updateStatus("Extension is off!");
+        return;
       }
+
+      checkSiteAccess().then((hasAccess) => {
+        if (hasAccess) {
+          getAudioStatus();
+        } else {
+          updateStatus("Click here to grant site access!");
+        }
+      });
     });
+
+  const header = document.querySelector("header");
+  header.addEventListener("click", () => {
+    if (document.body.classList.contains("no-access")) {
+      requestSiteAccess();
+    }
+  });
 
   rateSlider.addEventListener("input", (event) => {
     if (isExtensionOn) {

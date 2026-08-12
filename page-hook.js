@@ -1,12 +1,13 @@
-// Engine: all audio work, running in the page's own JavaScript context.
-// content.js injects this function as source text, so it must stay fully
-// self-contained — it cannot reference anything outside its own body.
+// Engine: all audio work. Runs in the page's own JavaScript context via
+// world: "MAIN" in the manifest — the browser injects it, so page CSP
+// does not apply and no injection trick is needed.
 //
 // Two layers. Acquisition notices audio (media elements, page-built audio
 // graphs, raw buffer playback) and feeds the registry. Effects applies speed
 // and reverb to whatever the registry holds, without caring where it came from.
 
-function slowAndReverbPageHook() {
+(() => {
+  if (window.__slowAndReverbHookInstalled) return;
   // ------------------------------------------------------------- constants
   const DECAY_TIME_SECONDS = 4;
   const PRE_DELAY_SECONDS = 0.05;
@@ -240,6 +241,12 @@ function slowAndReverbPageHook() {
       reportState();
     });
 
+    // Fires when the element meets encrypted (DRM) data, which can happen
+    // before mediaKeys is set — rule out reverb as early as possible.
+    element.addEventListener("encrypted", () => {
+      unusableElements.add(element);
+    });
+
     // Players write playbackRate back to 1 when rebuffering; put ours back.
     element.addEventListener("ratechange", () => {
       const wanted = effectiveRate();
@@ -364,6 +371,18 @@ function slowAndReverbPageHook() {
     // The page's graph carries it; our destination patch adds the reverb.
     if (pageOwnedElements.has(element)) return;
 
+    // DRM-protected (EME) media: capturing it yields silence at best, and
+    // sites detect the capture and cut playback (Spotify polls
+    // mozAudioCaptured). Never connect it. Speed is untouched by this.
+    if (element.mediaKeys) {
+      unusableElements.add(element);
+      console.warn(
+        "[Slow and Reverb] DRM-protected media; reverb unavailable for it. " +
+          "Speed still works."
+      );
+      return;
+    }
+
     ensureOwnGraph();
     if (ownContext.state === "suspended") {
       await ownContext.resume().catch(() => {});
@@ -392,6 +411,7 @@ function slowAndReverbPageHook() {
       const chain = getChain(ownContext);
       origConnect.call(source, chain.input);
       connectedElements.add(element);
+      console.log("[Slow and Reverb] reverb connected to a media element");
     } catch (error) {
       unusableElements.add(element);
       // InvalidStateError means another graph already claimed the element;
@@ -652,4 +672,4 @@ function slowAndReverbPageHook() {
   console.log("[Slow and Reverb] engine installed");
 
   window.postMessage({ source: FROM_PAGE, type: "ready" }, "*");
-}
+})();
