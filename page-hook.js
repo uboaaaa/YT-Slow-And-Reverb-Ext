@@ -19,11 +19,16 @@
 
   const RATE_REAPPLY_INTERVAL_MS = 500;
 
-  // DRM hands-off guards. Firefox proper tolerates both effects on DRM media
-  // (verified on Spotify: speed and reverb both work fully with guards off),
-  // but on Zen, Spotify halts playback at its first segment boundary when the
-  // rate or the audio path is touched. Currently configured for Firefox with
-  // both guards off; a user-facing toggle is planned to make this a choice.
+  // Minimum gap between corrective writes from the ratechange listener. An
+  // unthrottled counter-write can escalate into an infinite ratechange storm
+  // if anything else on the page is also managing the rate.
+  const RATE_FIGHT_MIN_INTERVAL_MS = 250;
+
+  // DRM hands-off guards. Some environments stop playback of DRM-protected
+  // media when its rate or audio path is modified; with a guard on, such
+  // elements are left completely untouched so playback is never disrupted.
+  // Off by default for compatibility with standard Firefox, where playback
+  // is unaffected; a user-facing toggle is planned.
   const DRM_SPEED_GUARD = false;
   const DRM_REVERB_GUARD = false;
 
@@ -46,8 +51,12 @@
   const effectiveMix = () => (isExtensionOn ? reverbMix : 0);
 
   // -------------------------------------------------------------- registry
-  const speedElements = new Set(); // every media element seen; speed targets
-  const bufferSources = new Set(); // live whole-track buffer nodes; speed targets
+  // Iterable registries hold WeakRefs: a strong Set would pin every media
+  // element a single-page app ever created for the page's whole lifetime,
+  // which is a memory leak on long sessions. Dead refs are swept on iteration.
+  const speedElementRefs = new Set(); // every media element seen; speed targets
+  const seenSpeedElements = new WeakSet(); // membership test for the above
+  const bufferSourceRefs = new Set(); // whole-track buffer nodes; speed targets
   const chains = new Map(); // AudioContext -> effect chain; reverb targets
   const pageOwnedElements = new WeakSet(); // wired into the page's own graph
   const connectedElements = new WeakSet(); // wired into our chain
@@ -60,14 +69,25 @@
   let warnedAboutSegmentedPlayback = false;
   let loggedSpeedElement = false;
 
+  // Yields live targets and sweeps garbage-collected ones out of the set.
+  function* liveRefs(refSet) {
+    for (const ref of refSet) {
+      const target = ref.deref();
+      if (target === undefined) {
+        refSet.delete(ref);
+        continue;
+      }
+      yield target;
+    }
+  }
+
   // True once any media on this page turned out to be DRM-protected; the
   // popup uses it to show why the controls are unavailable.
   let drmBlocked = false;
 
-  // DRM media gets no effects at all. Reverb requires capture, which DRM
-  // blocks and sites detect. Speed is enforced too: Spotify fights the rate,
-  // then stops feeding audio at its first segment boundary (~10s) and wedges
-  // until a page reload. Touching it only breaks playback.
+  // Some players stop playback entirely when their DRM-protected media is
+  // modified, and the stop can persist until the page is reloaded. When the
+  // guards are on, such elements get no effects at all.
   function markElementDrm(element) {
     if (drmElements.has(element)) return;
 
@@ -91,13 +111,8 @@
     console.warn(
       DRM_SPEED_GUARD && DRM_REVERB_GUARD
         ? "[Slow and Reverb] DRM-protected media; leaving it untouched — this " +
-            "site's player breaks playback when speed or reverb are changed."
-        : "[Slow and Reverb] DRM detected; guards DISABLED for testing " +
-            "(speed guard: " +
-            DRM_SPEED_GUARD +
-            ", reverb guard: " +
-            DRM_REVERB_GUARD +
-            ")."
+            "site's player may break playback when speed or reverb are changed."
+        : "[Slow and Reverb] DRM-protected media detected."
     );
   }
 
@@ -232,7 +247,7 @@
 
     // Only write when different: this runs on a timer, and every write fires
     // a ratechange event.
-    for (const node of bufferSources) {
+    for (const node of liveRefs(bufferSourceRefs)) {
       try {
         if (Math.abs(node.playbackRate.value - rate) > 0.001) {
           node.playbackRate.value = rate;
@@ -242,7 +257,7 @@
       }
     }
 
-    for (const element of speedElements) {
+    for (const element of liveRefs(speedElementRefs)) {
       // Untouched until playing and DRM-checked; see enableRate.
       if (!rateEligible.has(element)) continue;
       if (DRM_SPEED_GUARD && drmElements.has(element)) continue;
@@ -267,7 +282,7 @@
 
   // ---------------------------------------------------------------- status
   function reportState() {
-    let hasMedia = speedElements.size > 0 || bufferSources.size > 0;
+    let hasMedia = false;
     let playing = false;
 
     for (const context of chains.keys()) {
@@ -276,8 +291,14 @@
       if (context.state === "running") playing = true;
     }
 
-    for (const element of speedElements) {
+    for (const element of liveRefs(speedElementRefs)) {
+      hasMedia = true;
       if (!element.paused) playing = true;
+    }
+
+    for (const node of liveRefs(bufferSourceRefs)) {
+      hasMedia = true;
+      break;
     }
 
     window.postMessage(
@@ -286,8 +307,7 @@
         type: "status",
         hasMedia,
         playing,
-        // With the guard disabled the sliders must stay usable for testing,
-        // so don't tell the popup to dim them.
+        // Only dim the popup's controls when the guard actually blocks them.
         drmBlocked: DRM_SPEED_GUARD && drmBlocked,
       },
       "*"
@@ -296,13 +316,11 @@
 
   // ------------------------------------------- acquisition: media elements
   function trackElementForSpeed(element) {
-    if (!element || speedElements.has(element)) return;
+    if (!element || seenSpeedElements.has(element)) return;
 
-    speedElements.add(element);
-    element.addEventListener("ended", () => {
-      speedElements.delete(element);
-      reportState();
-    });
+    seenSpeedElements.add(element);
+    speedElementRefs.add(new WeakRef(element));
+    element.addEventListener("ended", reportState);
 
     // Fires when the element meets encrypted (DRM) data, which can happen
     // before mediaKeys is set — back off as early as possible.
@@ -313,8 +331,7 @@
 
     // Speed is only ever applied to an element that is actually playing and
     // has been checked for DRM at that moment. Applying earlier (at creation)
-    // tampers with DRM elements before the encrypted event can fire, which is
-    // enough to make Spotify halt playback in some environments.
+    // would touch DRM elements before the encrypted event can fire.
     const enableRate = () => {
       if (DRM_SPEED_GUARD && (drmElements.has(element) || element.mediaKeys)) {
         return;
@@ -330,11 +347,19 @@
 
     // Players write playbackRate back to 1 when rebuffering; put ours back.
     let rateFightCount = 0;
+    let lastRateFight = 0;
     element.addEventListener("ratechange", () => {
       if (!rateEligible.has(element)) return;
       if (DRM_SPEED_GUARD && drmElements.has(element)) return;
       const wanted = effectiveRate();
       if (Math.abs(element.playbackRate - wanted) < 0.001) return;
+
+      // Throttled so corrective writes can never escalate into an event
+      // storm. Anything missed lands via the timer sweep.
+      const now = Date.now();
+      if (now - lastRateFight < RATE_FIGHT_MIN_INTERVAL_MS) return;
+      lastRateFight = now;
+
       rateFightCount++;
       element.playbackRate = wanted;
     });
@@ -601,8 +626,7 @@
       const duration = node.buffer ? node.buffer.duration : 0;
 
       if (duration >= MIN_SPEEDABLE_BUFFER_SECONDS) {
-        bufferSources.add(node);
-        node.addEventListener("ended", () => bufferSources.delete(node));
+        bufferSourceRefs.add(new WeakRef(node));
         try {
           node.playbackRate.value = effectiveRate();
         } catch (error) {
@@ -711,7 +735,7 @@
   // Players rewrite playbackRate at any moment; the ratechange listener
   // catches most of it, this catches the rest.
   setInterval(() => {
-    if (speedElements.size > 0 || bufferSources.size > 0) applyRate();
+    if (speedElementRefs.size > 0 || bufferSourceRefs.size > 0) applyRate();
   }, RATE_REAPPLY_INTERVAL_MS);
 
   // -------------------------------------------------------------- messaging
@@ -739,8 +763,8 @@
         sampleRate: context.sampleRate,
         own: context === ownContext,
       })),
-      liveBufferSources: bufferSources.size,
-      elements: [...speedElements].map((element) => ({
+      liveBufferSources: [...liveRefs(bufferSourceRefs)].length,
+      elements: [...liveRefs(speedElementRefs)].map((element) => ({
         tag: element.tagName,
         drm: drmElements.has(element),
         inDocument: element.isConnected,

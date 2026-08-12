@@ -272,8 +272,13 @@ button {
   transform: translateY(2px);
 }
 /* SPECIAL CONDITIONS */
-/* Audio not detected */
-body.no-audio { 
+/* Audio not detected. Dims the controls individually rather than the whole
+   body: child opacity can never exceed its parent's, so a dimmed body would
+   drag the support links down with it no matter what they set. */
+body.no-audio .header-container,
+body.no-audio .slider-container,
+body.no-audio .preset-container,
+body.no-audio .button-container {
   opacity: 0.5;
   cursor: not-allowed;
   pointer-events: none;

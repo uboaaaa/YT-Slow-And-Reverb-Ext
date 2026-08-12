@@ -104,7 +104,7 @@ function getAudioStatus() {
       const drmBlocked = !!(response && response.drmBlocked);
       document.body.classList.toggle("drm-blocked", drmBlocked);
       const explanation = drmBlocked
-        ? "This site's audio is DRM-protected; its player breaks playback " +
+        ? "This site's audio is DRM-protected; its player may break playback " +
           "when speed or reverb are changed, so the controls are disabled."
         : "";
       document.getElementById("rate-slider-container").title = explanation;
