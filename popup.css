@@ -263,3 +263,10 @@ body.no-access .button-container {
 body.no-access .header-container {
   cursor: pointer;
 }
+
+/* DRM-protected audio: touching it breaks playback, so both controls are off */
+body.drm-blocked #rate-slider-container,
+body.drm-blocked #reverb-slider-container {
+  opacity: 0.5;
+  pointer-events: none;
+}

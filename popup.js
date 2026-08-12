@@ -90,6 +90,17 @@ function getAudioStatus() {
       } else {
         updateStatus("No audio detected!");
       }
+
+      // DRM-protected pages get neither effect (the site's player breaks
+      // playback if we touch it); dim both sliders and say why.
+      const drmBlocked = !!(response && response.drmBlocked);
+      document.body.classList.toggle("drm-blocked", drmBlocked);
+      const explanation = drmBlocked
+        ? "This site's audio is DRM-protected; its player breaks playback " +
+          "when speed or reverb are changed, so the controls are disabled."
+        : "";
+      document.getElementById("rate-slider-container").title = explanation;
+      document.getElementById("reverb-slider-container").title = explanation;
     });
   });
 }

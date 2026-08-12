@@ -10,7 +10,7 @@ let storedPlaybackRate = 1.0;
 let storedReverbMix = 0.0;
 
 // Latest status pushed up by the engine.
-let engineStatus = { hasMedia: false, playing: false };
+let engineStatus = { hasMedia: false, playing: false, drmBlocked: false };
 
 // Wake the background event page and prove it's reachable. Without it, the
 // CORS header rewrite is dead and cross-origin reverb fails.
@@ -47,7 +47,11 @@ window.addEventListener("message", (event) => {
   if (data.type === "ready") {
     sendSettings();
   } else if (data.type === "status") {
-    engineStatus = { hasMedia: !!data.hasMedia, playing: !!data.playing };
+    engineStatus = {
+      hasMedia: !!data.hasMedia,
+      playing: !!data.playing,
+      drmBlocked: !!data.drmBlocked,
+    };
   }
 });
 
@@ -80,9 +84,13 @@ browser.runtime.onMessage.addListener((message) => {
     return Promise.resolve({
       status: "playing",
       audioName: document.title || "Unknown",
+      drmBlocked: engineStatus.drmBlocked,
     });
   }
   if (engineStatus.hasMedia) {
-    return Promise.resolve({ status: "audioDetected" });
+    return Promise.resolve({
+      status: "audioDetected",
+      drmBlocked: engineStatus.drmBlocked,
+    });
   }
 });

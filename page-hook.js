@@ -18,6 +18,15 @@
   const MIN_SPEEDABLE_BUFFER_SECONDS = 30;
 
   const RATE_REAPPLY_INTERVAL_MS = 500;
+
+  // DRM hands-off guards. Firefox proper tolerates both effects on DRM media
+  // (verified on Spotify: speed and reverb both work fully with guards off),
+  // but on Zen, Spotify halts playback at its first segment boundary when the
+  // rate or the audio path is touched. Currently configured for Firefox with
+  // both guards off; a user-facing toggle is planned to make this a choice.
+  const DRM_SPEED_GUARD = false;
+  const DRM_REVERB_GUARD = false;
+
   const CORS_RELOAD_TIMEOUT_MS = 8000;
   const SCAN_DEBOUNCE_MS = 300;
   const SHADOW_SCAN_INTERVAL_MS = 3000;
@@ -44,10 +53,53 @@
   const connectedElements = new WeakSet(); // wired into our chain
   const unusableElements = new WeakSet(); // reverb given up on these
   const reloadingElements = new WeakSet(); // mid CORS reload
+  const drmElements = new WeakSet(); // DRM: hands off entirely, speed included
+  const rateEligible = new WeakSet(); // cleared for speed: playing and non-DRM
   let ownContext = null; // our AudioContext for DOM media elements
 
   let warnedAboutSegmentedPlayback = false;
   let loggedSpeedElement = false;
+
+  // True once any media on this page turned out to be DRM-protected; the
+  // popup uses it to show why the controls are unavailable.
+  let drmBlocked = false;
+
+  // DRM media gets no effects at all. Reverb requires capture, which DRM
+  // blocks and sites detect. Speed is enforced too: Spotify fights the rate,
+  // then stops feeding audio at its first segment boundary (~10s) and wedges
+  // until a page reload. Touching it only breaks playback.
+  function markElementDrm(element) {
+    if (drmElements.has(element)) return;
+
+    drmElements.add(element);
+    if (DRM_REVERB_GUARD) unusableElements.add(element);
+    drmBlocked = true;
+
+    if (DRM_SPEED_GUARD) {
+      // Undo anything we already set, so their player sees a pristine element.
+      rateEligible.delete(element);
+      try {
+        element.playbackRate = 1;
+        element.preservesPitch = true;
+        element.mozPreservesPitch = true;
+      } catch (error) {
+        // Element torn down. Harmless.
+      }
+    }
+
+    reportState();
+    console.warn(
+      DRM_SPEED_GUARD && DRM_REVERB_GUARD
+        ? "[Slow and Reverb] DRM-protected media; leaving it untouched — this " +
+            "site's player breaks playback when speed or reverb are changed."
+        : "[Slow and Reverb] DRM detected; guards DISABLED for testing " +
+            "(speed guard: " +
+            DRM_SPEED_GUARD +
+            ", reverb guard: " +
+            DRM_REVERB_GUARD +
+            ")."
+    );
+  }
 
   // Originals, captured so our own wiring bypasses our patches.
   const origConnect = AudioNode.prototype.connect;
@@ -191,6 +243,9 @@
     }
 
     for (const element of speedElements) {
+      // Untouched until playing and DRM-checked; see enableRate.
+      if (!rateEligible.has(element)) continue;
+      if (DRM_SPEED_GUARD && drmElements.has(element)) continue;
       try {
         if (element.preservesPitch !== false) element.preservesPitch = false;
         if (element.mozPreservesPitch !== false) element.mozPreservesPitch = false;
@@ -226,7 +281,15 @@
     }
 
     window.postMessage(
-      { source: FROM_PAGE, type: "status", hasMedia, playing },
+      {
+        source: FROM_PAGE,
+        type: "status",
+        hasMedia,
+        playing,
+        // With the guard disabled the sliders must stay usable for testing,
+        // so don't tell the popup to dim them.
+        drmBlocked: DRM_SPEED_GUARD && drmBlocked,
+      },
       "*"
     );
   }
@@ -242,15 +305,37 @@
     });
 
     // Fires when the element meets encrypted (DRM) data, which can happen
-    // before mediaKeys is set — rule out reverb as early as possible.
+    // before mediaKeys is set — back off as early as possible.
     element.addEventListener("encrypted", () => {
-      unusableElements.add(element);
+      markElementDrm(element);
     });
+    if (element.mediaKeys) markElementDrm(element);
+
+    // Speed is only ever applied to an element that is actually playing and
+    // has been checked for DRM at that moment. Applying earlier (at creation)
+    // tampers with DRM elements before the encrypted event can fire, which is
+    // enough to make Spotify halt playback in some environments.
+    const enableRate = () => {
+      if (DRM_SPEED_GUARD && (drmElements.has(element) || element.mediaKeys)) {
+        return;
+      }
+      rateEligible.add(element);
+      element.preservesPitch = false;
+      element.mozPreservesPitch = false;
+      element.playbackRate = effectiveRate();
+    };
+
+    element.addEventListener("playing", enableRate);
+    if (!element.paused) enableRate();
 
     // Players write playbackRate back to 1 when rebuffering; put ours back.
+    let rateFightCount = 0;
     element.addEventListener("ratechange", () => {
+      if (!rateEligible.has(element)) return;
+      if (DRM_SPEED_GUARD && drmElements.has(element)) return;
       const wanted = effectiveRate();
       if (Math.abs(element.playbackRate - wanted) < 0.001) return;
+      rateFightCount++;
       element.playbackRate = wanted;
     });
 
@@ -265,12 +350,20 @@
       // Cut the reverb tail on our chain; applySettings restores it on play.
       const chain = ownContext && chains.get(ownContext);
       if (chain) chain.wet.gain.setValueAtTime(0, ownContext.currentTime);
+      // Diagnostic for players that pause themselves when the rate is changed.
+      if (rateFightCount > 0 || Math.abs(element.playbackRate - 1) > 0.001) {
+        console.log(
+          "[Slow and Reverb] paused at " +
+            element.currentTime.toFixed(2) +
+            "s, rate " +
+            element.playbackRate.toFixed(2) +
+            ", after " +
+            rateFightCount +
+            " rate fight(s)"
+        );
+      }
       reportState();
     });
-
-    element.preservesPitch = false;
-    element.mozPreservesPitch = false;
-    element.playbackRate = effectiveRate();
 
     if (!loggedSpeedElement) {
       loggedSpeedElement = true;
@@ -371,16 +464,9 @@
     // The page's graph carries it; our destination patch adds the reverb.
     if (pageOwnedElements.has(element)) return;
 
-    // DRM-protected (EME) media: capturing it yields silence at best, and
-    // sites detect the capture and cut playback (Spotify polls
-    // mozAudioCaptured). Never connect it. Speed is untouched by this.
     if (element.mediaKeys) {
-      unusableElements.add(element);
-      console.warn(
-        "[Slow and Reverb] DRM-protected media; reverb unavailable for it. " +
-          "Speed still works."
-      );
-      return;
+      markElementDrm(element);
+      if (DRM_REVERB_GUARD) return;
     }
 
     ensureOwnGraph();
@@ -398,7 +484,8 @@
         );
         return;
       }
-      // The reload reset the rate set at tracking time.
+      // The reload reset the rate; this element is confirmed non-DRM.
+      rateEligible.add(element);
       element.preservesPitch = false;
       element.mozPreservesPitch = false;
       element.playbackRate = effectiveRate();
@@ -655,6 +742,7 @@
       liveBufferSources: bufferSources.size,
       elements: [...speedElements].map((element) => ({
         tag: element.tagName,
+        drm: drmElements.has(element),
         inDocument: element.isConnected,
         src: (element.currentSrc || element.src || "").slice(0, 80),
         paused: element.paused,
