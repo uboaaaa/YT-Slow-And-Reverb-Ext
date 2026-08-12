@@ -1,13 +1,28 @@
 {
   "manifest_version": 2,
-  "name": "YouTube Slow and Reverb Controls",
-  "version": "1.0",
-  "description": "A small, no-nonsense extension to control speed and reverb settings on YouTube videos.",
-  "permissions": ["activeTab", "storage"],
+  "name": "Slow and Reverb Controls",
+  "version": "2.0",
+  "description": "A small, no-nonsense extension to control speed and reverb settings on audio and video anywhere on the web.",
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "slow-and-reverb@uboaaaa"
+    }
+  },
+  "permissions": [
+    "storage",
+    "webRequest",
+    "webRequestBlocking",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"]
+  },
   "content_scripts": [
     {
-      "matches": ["*://*.youtube.com/*"],
-      "js": ["content.js"]
+      "matches": ["<all_urls>"],
+      "js": ["page-hook.js", "content.js"],
+      "all_frames": true,
+      "run_at": "document_start"
     }
   ],
   "browser_action": {

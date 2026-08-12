@@ -1,5 +1,17 @@
+// Popup: renders the controls and writes settings to storage.
+//
+// It does not message the content script to apply settings. Content scripts in
+// every frame listen for storage changes instead, which reaches media inside
+// iframes that the popup has no easy way to address.
+
+const DEFAULT_RATE = 1.0;
+const DEFAULT_REVERB_MIX = 0.0;
+
+// How long to wait for a frame that has media to answer before deciding the
+// page has none.
+const STATUS_TIMEOUT_MS = 400;
+
 let isExtensionOn = true;
-browser.storage.local.set({ isExtensionOn: true }); //init state
 
 //Update header
 function updateStatus(status) {
@@ -28,78 +40,69 @@ function updateStatus(status) {
 function getAudioStatus() {
   browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
     const activeTab = tabs[0];
-    browser.tabs
+    if (!activeTab) {
+      updateStatus("No audio detected!");
+      return;
+    }
+
+    // Frames without media deliberately do not reply, so this can hang. Race it
+    // against a timer rather than waiting forever.
+    const askFrames = browser.tabs
       .sendMessage(activeTab.id, { type: "getAudioStatus" })
-      .then((response) => {
-        if (response.status == "playing") {
-          updateStatus(`${response.audioName}`);
-        } else if (response.status == "noAudio") {
-          updateStatus(`No audio detected!`);
-        } else if (response.status == "audioDetected") {
-          updateStatus(`Audio paused!`);
-        } else if (response.status == "extensionOff") {
-          updateStatus(`Extension is off!`);
-        }
-      })
-      .catch((error) => {
-        console.error(
-          `Error getting audio status from tab ${activeTab.id}: ${error}`
-        );
-      });
+      .catch(() => null);
+
+    const timeout = new Promise((resolve) =>
+      setTimeout(() => resolve(null), STATUS_TIMEOUT_MS)
+    );
+
+    Promise.race([askFrames, timeout]).then((response) => {
+      if (response && response.status === "playing") {
+        updateStatus(`${response.audioName}`);
+      } else if (response && response.status === "audioDetected") {
+        updateStatus("Audio paused!");
+      } else {
+        updateStatus("No audio detected!");
+      }
+    });
   });
 }
 
 function toggleExtension() {
+  isExtensionOn = !isExtensionOn;
+
+  // Only the on/off flag is written. The stored rate and mix are left alone so
+  // that switching back on restores the slider positions.
+  browser.storage.local.set({ isExtensionOn });
+
   if (isExtensionOn) {
-    //extension on -> off
-    isExtensionOn = false;
-    changePlaybackRate(1.0);
-    changeReverbMix(0.0);
-    updateStatus("Extension is off!");
-    browser.storage.local.set({ isExtensionOn: false });
-  } else {
-    //extension off -> on
-    isExtensionOn = true;
-    browser.storage.local.set({ isExtensionOn: true });
-    const rateSlider = document.getElementById("rate-slider");
-    const reverbSlider = document.getElementById("reverb-slider");
-    changePlaybackRate(parseFloat(rateSlider.value));
-    changeReverbMix(parseFloat(reverbSlider.value));
-    getAudioStatus();
     document.body.classList.remove("extension-off");
+    getAudioStatus();
+  } else {
+    updateStatus("Extension is off!");
   }
 }
 
 function rateDefault() {
-  const defaultRate = 1.0;
-
   const rateSlider = document.getElementById("rate-slider");
   const rateValueLabel = document.getElementById("rate-value");
 
-  changePlaybackRate(defaultRate);
+  storePlaybackRate(DEFAULT_RATE);
 
-  storePlaybackRate(defaultRate);
-
-  rateSlider.value = defaultRate;
-  rateValueLabel.innerText = `${defaultRate.toFixed(2)}`;
+  rateSlider.value = DEFAULT_RATE;
+  rateValueLabel.innerText = `${DEFAULT_RATE.toFixed(2)}`;
 }
 
 function reverbDefault() {
-  const defaultReverbMix = 0.0;
-
   const reverbSlider = document.getElementById("reverb-slider");
   const reverbValueLabel = document.getElementById("reverb-value");
 
-  changeReverbMix(defaultReverbMix);
-  storeReverbMix(defaultReverbMix);
+  storeReverbMix(DEFAULT_REVERB_MIX);
 
-  reverbSlider.value = defaultReverbMix;
-  reverbValueLabel.innerText = `${defaultReverbMix.toFixed(2)}`;
+  reverbSlider.value = DEFAULT_REVERB_MIX;
+  reverbValueLabel.innerText = `${DEFAULT_REVERB_MIX.toFixed(2)}`;
 }
 
 document.addEventListener("DOMContentLoaded", () => {
-  const defaultRate = 1.0;
-  const defaultReverbMix = 0.0;
   const rateSlider = document.getElementById("rate-slider");
   const rateValueLabel = document.getElementById("rate-value");
   const reverbSlider = document.getElementById("reverb-slider");
@@ -111,8 +114,15 @@ document.addEventListener("DOMContentLoaded", () => {
     .then((result) => {
       isExtensionOn =
         result.isExtensionOn !== undefined ? result.isExtensionOn : true;
-      const storedRate = result.playbackRate || defaultRate;
-      const storedReverbMix = result.reverbMix || defaultReverbMix;
+
+      // Write the default only on a genuine first run, so an "off" state that
+      // was saved earlier survives reopening the popup.
+      if (result.isExtensionOn === undefined) {
+        browser.storage.local.set({ isExtensionOn: true });
+      }
+
+      const storedRate = result.playbackRate || DEFAULT_RATE;
+      const storedReverbMix = result.reverbMix || DEFAULT_REVERB_MIX;
 
       rateSlider.value = storedRate;
       rateValueLabel.innerText = `${storedRate.toFixed(2)}`;
@@ -120,8 +130,6 @@ document.addEventListener("DOMContentLoaded", () => {
       reverbValueLabel.innerText = `${storedReverbMix.toFixed(2)}`;
 
       if (isExtensionOn) {
-        changePlaybackRate(parseFloat(storedRate));
-        changeReverbMix(parseFloat(storedReverbMix));
         getAudioStatus();
       } else {
         document.body.classList.add("extension-off");
@@ -131,19 +139,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   rateSlider.addEventListener("input", (event) => {
     if (isExtensionOn) {
-      const newRate = parseFloat(event.target.value).toFixed(2);
-      rateValueLabel.innerText = `${newRate}`;
-      changePlaybackRate(parseFloat(newRate));
-      storePlaybackRate(parseFloat(newRate));
+      const newRate = parseFloat(event.target.value);
+      rateValueLabel.innerText = `${newRate.toFixed(2)}`;
+      storePlaybackRate(newRate);
     }
   });
 
   reverbSlider.addEventListener("input", (event) => {
     if (isExtensionOn) {
-      const newReverbMix = parseFloat(event.target.value).toFixed(2);
-      reverbValueLabel.innerText = `${newReverbMix}`;
-      changeReverbMix(parseFloat(newReverbMix));
-      storeReverbMix(parseFloat(newReverbMix));
+      const newReverbMix = parseFloat(event.target.value);
+      reverbValueLabel.innerText = `${newReverbMix.toFixed(2)}`;
+      storeReverbMix(newReverbMix);
     }
   });
 
@@ -163,40 +169,4 @@ function storePlaybackRate(rate) {
 
 function storeReverbMix(mix) {
   browser.storage.local.set({ reverbMix: mix });
-}
-
-function changePlaybackRate(rate) {
-  console.log(`Changing playback rate to: ${rate}`);
-  browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-    const activeTab = tabs[0];
-    browser.tabs
-      .sendMessage(activeTab.id, {
-        type: "updatePlaybackRate",
-        playbackRate: rate,
-      })
-      .then(() => {
-        console.log(`Message sent to tab ${activeTab.id}`);
-      })
-      .catch((error) => {
-        console.error(`Error sending message to tab ${activeTab.id}: ${error}`);
-      });
-  });
-}
-
-function changeReverbMix(mix) {
-  console.log(`Changing reverb mix to: ${mix}`);
-  browser.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
-    const activeTab = tabs[0];
-    browser.tabs
-      .sendMessage(activeTab.id, {
-        type: "updateReverbWetMix",
-        reverbWetMix: mix,
-      })
-      .then(() => {
-        console.log(`Message sent to tab ${activeTab.id}`);
-      })
-      .catch((error) => {
-        console.error(`Error sending message to tab ${activeTab.id}: ${error}`);
-      });
-  });
 }
