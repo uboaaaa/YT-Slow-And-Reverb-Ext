@@ -1,81 +1,70 @@
-// Page hook: runs inside the page's own JavaScript context.
+// Engine: all audio work, running in the page's own JavaScript context.
+// content.js injects this function as source text, so it must stay fully
+// self-contained — it cannot reference anything outside its own body.
 //
-// The content script can only reach media elements that exist in the DOM. Sites
-// like SoundCloud never create one — they decode audio into Web Audio buffers
-// and play it through their own graph, so there is nothing to attach to.
-//
-// This file takes the other route in. It patches the page's own Web Audio API so
-// that anything the page connects to its speakers is routed through our reverb
-// chain first. Nothing about CORS applies here: the page already decoded this
-// audio legally, so there is no taint, no header to inject, and no reload.
-//
-// It has to live in the page's context because content scripts run in an
-// isolated world with their own copies of the JavaScript globals. Patching
-// AudioNode.prototype from the content script would not affect the page at all.
-//
-// This file itself runs in the isolated world and only defines the function.
-// content.js converts it to source text and injects it, which runs it in the
-// page synchronously — before any of the page's own scripts. Loading it as a
-// separate <script src> would be asynchronous, and a page that builds its audio
-// graph early would finish before the patch was in place.
-//
-// Because it is stringified, this function must be entirely self-contained. It
-// cannot reference anything outside its own body.
+// Two layers. Acquisition notices audio (media elements, page-built audio
+// graphs, raw buffer playback) and feeds the registry. Effects applies speed
+// and reverb to whatever the registry holds, without caring where it came from.
 
 function slowAndReverbPageHook() {
+  // ------------------------------------------------------------- constants
   const DECAY_TIME_SECONDS = 4;
   const PRE_DELAY_SECONDS = 0.05;
   const CHANNEL_COUNT = 2;
 
-  // A buffer holding this much audio is a whole track, which we can safely
-  // change the speed of. Anything shorter is a streaming segment belonging to
-  // the site's scheduler. Real segments run a few seconds; real tracks run
-  // minutes, so there is a lot of room between the two.
+  // Shorter buffers are streaming segments owned by the site's scheduler;
+  // changing their rate only desynchronises them.
   const MIN_SPEEDABLE_BUFFER_SECONDS = 30;
 
-  // How often to put our speed back if the page has overwritten it.
   const RATE_REAPPLY_INTERVAL_MS = 500;
+  const CORS_RELOAD_TIMEOUT_MS = 8000;
+  const SCAN_DEBOUNCE_MS = 300;
+  const SHADOW_SCAN_INTERVAL_MS = 3000;
+
+  // Schemes that point at data the page already holds; CORS never applies.
+  const EXEMPT_SCHEMES = ["blob:", "data:", "mediasource:"];
 
   const FROM_CONTENT_SCRIPT = "slow-and-reverb";
   const FROM_PAGE = "slow-and-reverb-page";
 
+  // -------------------------------------- settings (pushed down by content.js)
   let isExtensionOn = true;
   let playbackRate = 1.0;
   let reverbMix = 0.0;
 
-  // One chain per live AudioContext. Audio nodes cannot be shared between
-  // contexts, so every context the page creates needs its own set.
-  const chains = new Map();
+  const effectiveRate = () => (isExtensionOn ? playbackRate : 1.0);
+  const effectiveMix = () => (isExtensionOn ? reverbMix : 0);
 
-  // Things whose speed we can change, kept so a later slider move reaches
-  // whatever is already playing.
-  const bufferSources = new Set();
-
-  // Every media element the page creates, whether or not it is ever added to
-  // the document. A player can build one with new Audio() or createElement and
-  // never append it, which makes it invisible to querySelectorAll and so
-  // invisible to the content script. Catching it at creation is the only way.
-  const speedElements = new Set();
+  // -------------------------------------------------------------- registry
+  const speedElements = new Set(); // every media element seen; speed targets
+  const bufferSources = new Set(); // live whole-track buffer nodes; speed targets
+  const chains = new Map(); // AudioContext -> effect chain; reverb targets
+  const pageOwnedElements = new WeakSet(); // wired into the page's own graph
+  const connectedElements = new WeakSet(); // wired into our chain
+  const unusableElements = new WeakSet(); // reverb given up on these
+  const reloadingElements = new WeakSet(); // mid CORS reload
+  let ownContext = null; // our AudioContext for DOM media elements
 
   let warnedAboutSegmentedPlayback = false;
   let loggedSpeedElement = false;
 
-  // Captured before patching, so our own wiring can bypass the patch.
+  // Originals, captured so our own wiring bypasses our patches.
   const origConnect = AudioNode.prototype.connect;
   const origDisconnect = AudioNode.prototype.disconnect;
   const origCreateBufferSource = BaseAudioContext.prototype.createBufferSource;
+  // On AudioContext, not BaseAudioContext: only live contexts have it.
   const origCreateMediaElementSource =
-    BaseAudioContext.prototype.createMediaElementSource;
+    AudioContext.prototype.createMediaElementSource;
 
-  // Only live output contexts get intercepted. An OfflineAudioContext is a
-  // render target, not the speakers — including the one we use below to build
-  // the impulse response, which would otherwise recurse into this patch.
+  // Live output contexts only. OfflineAudioContext is a render target (ours
+  // for the impulse response included) and must pass through untouched.
   function isLiveContext(context) {
     return (
       typeof AudioContext !== "undefined" && context instanceof AudioContext
     );
   }
 
+  // ---------------------------------------------------------------- reverb
   function createWhiteNoiseBuffer(context) {
     const bufferLength = Math.floor(
       (DECAY_TIME_SECONDS + PRE_DELAY_SECONDS) * context.sampleRate
@@ -121,124 +110,8 @@ function slowAndReverbPageHook() {
     return offlineContext.startRendering();
   }
 
-  const effectiveRate = () => (isExtensionOn ? playbackRate : 1.0);
-  const effectiveMix = () => (isExtensionOn ? reverbMix : 0);
-
-  function applyMix(context, chain) {
-    const wetValue = effectiveMix();
-    const dryValue = Math.cos((wetValue * Math.PI) / 2);
-    const wetAdjusted = Math.sin((wetValue * Math.PI) / 2);
-
-    chain.dry.gain.setValueAtTime(dryValue, context.currentTime);
-    // A convolver with no buffer outputs silence, so hold the wet path shut
-    // until the impulse response has finished rendering.
-    chain.wet.gain.setValueAtTime(
-      chain.convolver.buffer ? wetAdjusted : 0,
-      context.currentTime
-    );
-  }
-
-  // Speed comes from the element itself, so this works even when the page has
-  // already routed the element through its own graph and we cannot touch it.
-  function trackElementForSpeed(element) {
-    if (!element || speedElements.has(element)) return;
-
-    speedElements.add(element);
-    element.addEventListener("ended", () => speedElements.delete(element));
-
-    // A player that keeps its own clock will often write playbackRate back to 1
-    // whenever it adjusts buffering. Put our value back when that happens. This
-    // cannot loop: setting the rate fires ratechange again, and the second time
-    // through the value already matches and we return.
-    element.addEventListener("ratechange", () => {
-      const wanted = effectiveRate();
-      if (Math.abs(element.playbackRate - wanted) < 0.001) return;
-      element.playbackRate = wanted;
-    });
-
-    // Whether this element is playing is a far more reliable signal than the
-    // state of an audio context we may or may not have intercepted in time.
-    element.addEventListener("play", reportState);
-    element.addEventListener("pause", reportState);
-
-    element.preservesPitch = false;
-    element.mozPreservesPitch = false;
-    element.playbackRate = effectiveRate();
-
-    if (!loggedSpeedElement) {
-      loggedSpeedElement = true;
-      console.log(
-        "[Slow and Reverb] found a media element for speed control (in the DOM: " +
-          element.isConnected +
-          ")"
-      );
-    }
-  }
-
-  // Tells the content script not to try claiming this element for its own
-  // graph. Two createMediaElementSource calls on one element throw.
-  function markPageOwned(element) {
-    try {
-      element.dataset.slowReverbPageOwned = "1";
-    } catch (error) {
-      // Not an HTMLElement with a dataset. Nothing to mark.
-    }
-  }
-
-  function applyRate() {
-    const rate = effectiveRate();
-
-    // Only write when the value is actually different. This runs on a timer, and
-    // assigning playbackRate fires a ratechange event, so writing every time
-    // would produce a steady stream of pointless events.
-    for (const node of bufferSources) {
-      try {
-        if (Math.abs(node.playbackRate.value - rate) > 0.001) {
-          node.playbackRate.value = rate;
-        }
-      } catch (error) {
-        // Node already finished. Harmless.
-      }
-    }
-
-    for (const element of speedElements) {
-      try {
-        if (element.preservesPitch !== false) element.preservesPitch = false;
-        if (element.mozPreservesPitch !== false) element.mozPreservesPitch = false;
-        if (Math.abs(element.playbackRate - rate) > 0.001) {
-          element.playbackRate = rate;
-        }
-      } catch (error) {
-        // Element torn down mid-loop. Harmless.
-      }
-    }
-  }
-
-  function applySettings() {
-    for (const [context, chain] of chains) {
-      applyMix(context, chain);
-    }
-    applyRate();
-  }
-
-  function reportState() {
-    let active = false;
-
-    for (const context of chains.keys()) {
-      if (context.state === "running") active = true;
-    }
-
-    // Also counts as audio even if we never got hold of the context that is
-    // playing it, which is what left the popup showing nothing on first load.
-    for (const element of speedElements) {
-      if (!element.paused) active = true;
-    }
-
-    window.postMessage({ source: FROM_PAGE, type: "audioState", active }, "*");
-  }
-
-  // input --> dry -------------------> destination
-  //       \-> convolver --> wet ----/
+  // input --> dry ------------------> destination
+  //       \-> convolver --> wet ---/
   function getChain(context) {
     const existing = chains.get(context);
     if (existing) return existing;
@@ -250,8 +123,7 @@ function slowAndReverbPageHook() {
       convolver: context.createConvolver(),
     };
 
-    // origConnect throughout: the patched connect would send these straight
-    // back into the chain input and build an infinite loop.
+    // origConnect: the patched connect would loop these back into the chain.
     origConnect.call(chain.input, chain.dry);
     origConnect.call(chain.input, chain.convolver);
     origConnect.call(chain.convolver, chain.wet);
@@ -271,7 +143,9 @@ function slowAndReverbPageHook() {
     context.addEventListener("statechange", reportState);
     reportState();
 
-    console.log("[Slow and Reverb] intercepted a page AudioContext");
+    if (context !== ownContext) {
+      console.log("[Slow and Reverb] intercepted a page AudioContext");
+    }
 
     return chain;
   }
@@ -285,6 +159,310 @@ function slowAndReverbPageHook() {
     );
   }
 
+  // ---------------------------------------------------------------- effects
+  function applyMix(context, chain) {
+    const wetValue = effectiveMix();
+    const dryValue = Math.cos((wetValue * Math.PI) / 2);
+    const wetAdjusted = Math.sin((wetValue * Math.PI) / 2);
+
+    chain.dry.gain.setValueAtTime(dryValue, context.currentTime);
+    // A convolver with no buffer outputs silence; hold the wet path shut
+    // until the impulse response is ready.
+    chain.wet.gain.setValueAtTime(
+      chain.convolver.buffer ? wetAdjusted : 0,
+      context.currentTime
+    );
+  }
+
+  function applyRate() {
+    const rate = effectiveRate();
+
+    // Only write when different: this runs on a timer, and every write fires
+    // a ratechange event.
+    for (const node of bufferSources) {
+      try {
+        if (Math.abs(node.playbackRate.value - rate) > 0.001) {
+          node.playbackRate.value = rate;
+        }
+      } catch (error) {
+        // Node already finished.
+      }
+    }
+
+    for (const element of speedElements) {
+      try {
+        if (element.preservesPitch !== false) element.preservesPitch = false;
+        if (element.mozPreservesPitch !== false) element.mozPreservesPitch = false;
+        if (Math.abs(element.playbackRate - rate) > 0.001) {
+          element.playbackRate = rate;
+        }
+      } catch (error) {
+        // Element torn down mid-loop.
+      }
+    }
+  }
+
+  function applySettings() {
+    for (const [context, chain] of chains) {
+      applyMix(context, chain);
+    }
+    applyRate();
+  }
+
+  // ---------------------------------------------------------------- status
+  function reportState() {
+    let hasMedia = speedElements.size > 0 || bufferSources.size > 0;
+    let playing = false;
+
+    for (const context of chains.keys()) {
+      if (context === ownContext) continue; // ours runs even with nothing playing
+      hasMedia = true;
+      if (context.state === "running") playing = true;
+    }
+
+    for (const element of speedElements) {
+      if (!element.paused) playing = true;
+    }
+
+    window.postMessage(
+      { source: FROM_PAGE, type: "status", hasMedia, playing },
+      "*"
+    );
+  }
+
+  // ------------------------------------------- acquisition: media elements
+  function trackElementForSpeed(element) {
+    if (!element || speedElements.has(element)) return;
+
+    speedElements.add(element);
+    element.addEventListener("ended", () => {
+      speedElements.delete(element);
+      reportState();
+    });
+
+    // Players write playbackRate back to 1 when rebuffering; put ours back.
+    element.addEventListener("ratechange", () => {
+      const wanted = effectiveRate();
+      if (Math.abs(element.playbackRate - wanted) < 0.001) return;
+      element.playbackRate = wanted;
+    });
+
+    element.addEventListener("play", () => {
+      connectElementReverb(element)
+        .then(() => applySettings())
+        .catch(() => {});
+      reportState();
+    });
+
+    element.addEventListener("pause", () => {
+      // Cut the reverb tail on our chain; applySettings restores it on play.
+      const chain = ownContext && chains.get(ownContext);
+      if (chain) chain.wet.gain.setValueAtTime(0, ownContext.currentTime);
+      reportState();
+    });
+
+    element.preservesPitch = false;
+    element.mozPreservesPitch = false;
+    element.playbackRate = effectiveRate();
+
+    if (!loggedSpeedElement) {
+      loggedSpeedElement = true;
+      console.log(
+        "[Slow and Reverb] found a media element for speed control (in the DOM: " +
+          element.isConnected +
+          ")"
+      );
+    }
+
+    reportState();
+  }
+
+  function ensureOwnGraph() {
+    if (!ownContext) {
+      ownContext = new (window.AudioContext || window.webkitAudioContext)();
+      getChain(ownContext);
+    }
+  }
+
+  function needsCrossOriginOptIn(element) {
+    if (element.crossOrigin) return false;
+
+    const source = element.currentSrc || element.src;
+    if (!source) return false;
+    if (EXEMPT_SCHEMES.some((scheme) => source.startsWith(scheme))) return false;
+
+    try {
+      return new URL(source, document.baseURI).origin !== window.location.origin;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  // Reload the element as a CORS request; crossOrigin only takes effect
+  // before the media loads. Resolves true when the CORS check passed, false
+  // after restoring the element exactly as it was.
+  function reloadWithCrossOrigin(element) {
+    return new Promise((resolve) => {
+      const source = element.currentSrc || element.src;
+      const resumeAt = element.currentTime;
+      const wasPlaying = !element.paused;
+
+      reloadingElements.add(element);
+
+      const restorePosition = () => {
+        try {
+          element.currentTime = resumeAt;
+        } catch (error) {
+          // Stream not seekable yet.
+        }
+        if (wasPlaying) element.play().catch(() => {});
+      };
+
+      let settled = false;
+      const settle = (succeeded) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeout);
+        element.removeEventListener("loadedmetadata", onLoaded);
+        element.removeEventListener("error", onFailed);
+        reloadingElements.delete(element);
+        resolve(succeeded);
+      };
+
+      const onLoaded = () => {
+        restorePosition();
+        settle(true);
+      };
+
+      const onFailed = () => {
+        // CORS refused: undo the attribute and reload plain, so the page
+        // keeps working normally.
+        element.removeAttribute("crossorigin");
+        element.src = source;
+        element.load();
+        element.addEventListener("loadedmetadata", restorePosition, {
+          once: true,
+        });
+        settle(false);
+      };
+
+      const timeout = setTimeout(onFailed, CORS_RELOAD_TIMEOUT_MS);
+
+      element.addEventListener("loadedmetadata", onLoaded);
+      element.addEventListener("error", onFailed);
+
+      element.crossOrigin = "anonymous";
+      element.src = source;
+      element.load();
+    });
+  }
+
+  async function connectElementReverb(element) {
+    if (connectedElements.has(element)) return;
+    if (unusableElements.has(element)) return;
+    if (reloadingElements.has(element)) return;
+    // The page's graph carries it; our destination patch adds the reverb.
+    if (pageOwnedElements.has(element)) return;
+
+    ensureOwnGraph();
+    if (ownContext.state === "suspended") {
+      await ownContext.resume().catch(() => {});
+    }
+
+    if (needsCrossOriginOptIn(element)) {
+      const granted = await reloadWithCrossOrigin(element);
+      if (!granted) {
+        unusableElements.add(element);
+        console.warn(
+          "[Slow and Reverb] Site refused a cross-origin audio request; " +
+            "reverb unavailable here. Speed still works."
+        );
+        return;
+      }
+      // The reload reset the rate set at tracking time.
+      element.preservesPitch = false;
+      element.mozPreservesPitch = false;
+      element.playbackRate = effectiveRate();
+    }
+
+    if (connectedElements.has(element)) return; // connected while awaiting
+
+    try {
+      const source = origCreateMediaElementSource.call(ownContext, element);
+      const chain = getChain(ownContext);
+      origConnect.call(source, chain.input);
+      connectedElements.add(element);
+    } catch (error) {
+      unusableElements.add(element);
+      // InvalidStateError means another graph already claimed the element;
+      // anything else is a real failure and should say so.
+      if (error && error.name === "InvalidStateError") {
+        console.warn(
+          "[Slow and Reverb] Element already belongs to another audio graph; " +
+            "reverb unavailable for it. Speed still works."
+        );
+      } else {
+        console.warn(
+          "[Slow and Reverb] Could not connect this element for reverb.",
+          error
+        );
+      }
+    }
+  }
+
+  // -------------------------------------------------- acquisition: DOM scan
+  let lastShadowScan = 0;
+
+  function findMediaElements() {
+    const found = [...document.querySelectorAll("video, audio")];
+    if (found.length > 0) return found;
+
+    // Shadow-root walk touches every element; throttle it on media-less pages.
+    const now = Date.now();
+    if (now - lastShadowScan < SHADOW_SCAN_INTERVAL_MS) return found;
+    lastShadowScan = now;
+
+    const searchShadowRoots = (root) => {
+      for (const element of root.querySelectorAll("*")) {
+        if (!element.shadowRoot) continue;
+        found.push(...element.shadowRoot.querySelectorAll("video, audio"));
+        searchShadowRoots(element.shadowRoot);
+      }
+    };
+    searchShadowRoots(document);
+
+    return found;
+  }
+
+  let scanScheduled = false;
+
+  function scanForMedia() {
+    scanScheduled = false;
+    findMediaElements().forEach((element) => {
+      trackElementForSpeed(element);
+      if (!element.paused) {
+        connectElementReverb(element)
+          .then(() => applySettings())
+          .catch(() => {});
+      }
+    });
+  }
+
+  function scheduleScan() {
+    if (scanScheduled) return;
+    scanScheduled = true;
+    setTimeout(scanForMedia, SCAN_DEBOUNCE_MS);
+  }
+
+  // documentElement: body does not exist yet at document_start.
+  new MutationObserver(scheduleScan).observe(document.documentElement, {
+    childList: true,
+    subtree: true,
+  });
+  document.addEventListener("DOMContentLoaded", scanForMedia);
+  scanForMedia();
+
+  // ------------------------------------- acquisition: page-built audio graphs
   AudioNode.prototype.connect = function (target, ...rest) {
     if (target instanceof AudioDestinationNode && isLiveContext(this.context)) {
       const chain = getChain(this.context);
@@ -296,8 +474,8 @@ function slowAndReverbPageHook() {
   };
 
   AudioNode.prototype.disconnect = function (target, ...rest) {
-    // A page that connected to the destination is really connected to our
-    // chain input, so an unmodified disconnect would throw.
+    // Nodes that "connected to the destination" really connected to our
+    // chain input; mirror that here or the disconnect throws.
     if (target instanceof AudioDestinationNode && isLiveContext(this.context)) {
       const chain = chains.get(this.context);
       if (chain && !isChainNode(this, chain)) {
@@ -307,21 +485,11 @@ function slowAndReverbPageHook() {
     return origDisconnect.apply(this, arguments);
   };
 
-  // Speed for buffer-based playback. Changing playbackRate on an
-  // AudioBufferSourceNode resamples it, so the pitch drops with the tempo —
-  // the same effect preservesPitch=false gives on a media element.
-  //
-  // This only works when one buffer holds a whole track. A streaming player
-  // decodes short segments and schedules each one on its own clock, so a
-  // segment we slow down runs past the start time already booked for the next
-  // one. The result is a collision and a glitch, and the pace snaps back as
-  // soon as the next segment arrives on schedule. Only the site's own scheduler
-  // can change the pace of playback like that, so we leave segments alone.
+  // ------------------------------------------- acquisition: buffer playback
   function watchBufferSource(node) {
     const origStart = node.start;
 
-    // The buffer is assigned after the node is created, so its length is only
-    // known once playback is asked for.
+    // Buffer is assigned after creation; length is only known at start().
     node.start = function () {
       const duration = node.buffer ? node.buffer.duration : 0;
 
@@ -331,7 +499,7 @@ function slowAndReverbPageHook() {
         try {
           node.playbackRate.value = effectiveRate();
         } catch (error) {
-          // Ignore: the node is unusable anyway.
+          // Node unusable anyway.
         }
       } else if (!warnedAboutSegmentedPlayback) {
         warnedAboutSegmentedPlayback = true;
@@ -339,9 +507,7 @@ function slowAndReverbPageHook() {
           "[Slow and Reverb] This site streams audio in short scheduled " +
             "segments (" +
             duration.toFixed(2) +
-            "s). Speed control is unavailable here, because changing the rate " +
-            "of a segment desynchronises it from the site's own scheduler. " +
-            "Reverb is unaffected."
+            "s); speed control is unavailable here. Reverb is unaffected."
         );
       }
 
@@ -355,18 +521,15 @@ function slowAndReverbPageHook() {
     return node;
   };
 
-  BaseAudioContext.prototype.createMediaElementSource = function (element) {
+  AudioContext.prototype.createMediaElementSource = function (element) {
     if (element && isLiveContext(this)) {
       trackElementForSpeed(element);
-      markPageOwned(element);
+      pageOwnedElements.add(element);
     }
     return origCreateMediaElementSource.apply(this, arguments);
   };
 
-  // Every node above has a constructor form as well — new AudioBufferSourceNode
-  // (context, options) rather than context.createBufferSource(). Patching only
-  // the factory methods misses a player that uses the constructors, which is
-  // how a site can end up with reverb working but speed doing nothing.
+  // Constructor forms of the nodes above; a player can use either.
   function patchConstructor(name, onConstruct) {
     const Original = window[name];
     if (typeof Original !== "function") return;
@@ -385,13 +548,11 @@ function slowAndReverbPageHook() {
     const element = options && options.mediaElement;
     if (element) {
       trackElementForSpeed(element);
-      markPageOwned(element);
+      pageOwnedElements.add(element);
     }
   });
 
-  // The widest net for speed: catch media elements as they are created, before
-  // the page has decided what to do with them. This is what reaches a player
-  // that keeps its audio element out of the document entirely.
+  // ------------------------------------ acquisition: element creation and use
   const OriginalAudio = window.Audio;
   if (typeof OriginalAudio === "function") {
     const PatchedAudio = function (...args) {
@@ -407,8 +568,7 @@ function slowAndReverbPageHook() {
   Document.prototype.createElement = function (tagName, ...rest) {
     const element = origCreateElement.call(this, tagName, ...rest);
 
-    // createElement is a hot path on any framework-driven page, so check the
-    // cheap thing first. Both tags we care about are five characters.
+    // Hot path: cheapest check first. Both tags are five characters.
     if (typeof tagName === "string" && tagName.length === 5) {
       const lower = tagName.toLowerCase();
       if (lower === "audio" || lower === "video") trackElementForSpeed(element);
@@ -417,10 +577,8 @@ function slowAndReverbPageHook() {
     return element;
   };
 
-  // The two hooks that matter most, because they sit on the shared prototype
-  // rather than on the moment of creation. Everything above only catches an
-  // element if we were already installed when the page built it. These catch it
-  // whenever the page uses it, even if it was created before we arrived.
+  // Prototype hooks: catch elements whenever they are used, even ones created
+  // before we were installed.
   const origPlay = HTMLMediaElement.prototype.play;
   HTMLMediaElement.prototype.play = function (...args) {
     trackElementForSpeed(this);
@@ -443,13 +601,13 @@ function slowAndReverbPageHook() {
     });
   }
 
-  // A player that manages its own buffering will write playbackRate back to 1
-  // whenever it resynchronises, and it can do that at any moment. The ratechange
-  // listener catches most of it; this catches the rest.
+  // Players rewrite playbackRate at any moment; the ratechange listener
+  // catches most of it, this catches the rest.
   setInterval(() => {
     if (speedElements.size > 0 || bufferSources.size > 0) applyRate();
   }, RATE_REAPPLY_INTERVAL_MS);
 
+  // -------------------------------------------------------------- messaging
   window.addEventListener("message", (event) => {
     if (event.source !== window) return;
 
@@ -461,21 +619,18 @@ function slowAndReverbPageHook() {
       playbackRate = data.playbackRate;
       reverbMix = data.reverbMix;
       applySettings();
-    } else if (data.type === "requestState") {
-      reportState();
     }
   });
 
-  // Run __slowAndReverbDebug() in the console while a track is playing to see
-  // exactly what the hook is holding on to. If a tracked element shows paused
-  // true and a currentTime stuck at zero while you can hear music, that element
-  // is a decoy and the real audio is coming from somewhere else.
+  // ------------------------------------------------------------- diagnostics
+  // Run __slowAndReverbDebug() in the console to see what the engine holds.
   window.__slowAndReverbDebug = function () {
     return {
       settings: { isExtensionOn, playbackRate, reverbMix },
       contexts: [...chains.keys()].map((context) => ({
         state: context.state,
         sampleRate: context.sampleRate,
+        own: context === ownContext,
       })),
       liveBufferSources: bufferSources.size,
       elements: [...speedElements].map((element) => ({
@@ -493,10 +648,8 @@ function slowAndReverbPageHook() {
     };
   };
 
-  // A marker and a log line, both so you can confirm from the console that the
-  // patch is actually in place on a given site.
   window.__slowAndReverbHookInstalled = true;
-  console.log("[Slow and Reverb] page hook installed");
+  console.log("[Slow and Reverb] engine installed");
 
   window.postMessage({ source: FROM_PAGE, type: "ready" }, "*");
 }
