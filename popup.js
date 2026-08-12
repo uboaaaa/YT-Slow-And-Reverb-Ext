@@ -7,6 +7,14 @@
 const DEFAULT_RATE = 1.0;
 const DEFAULT_REVERB_MIX = 0.0;
 
+// A preset is just a hand moving both sliders at once: same storage writes,
+// same gating. The engine has no idea presets exist.
+const PRESETS = {
+  slowrev: { rate: 0.75, mix: 0.7 },
+  default: { rate: DEFAULT_RATE, mix: DEFAULT_REVERB_MIX },
+  nightcore: { rate: 1.35, mix: 0.0 },
+};
+
 // How long to wait for a frame that has media to answer before deciding the
 // page has none.
 const STATUS_TIMEOUT_MS = 400;
@@ -120,6 +128,21 @@ function toggleExtension() {
   }
 }
 
+function applyPreset(name) {
+  if (!isExtensionOn) return;
+
+  const preset = PRESETS[name];
+  if (!preset) return;
+
+  storePlaybackRate(preset.rate);
+  storeReverbMix(preset.mix);
+
+  document.getElementById("rate-slider").value = preset.rate;
+  document.getElementById("rate-value").innerText = preset.rate.toFixed(2);
+  document.getElementById("reverb-slider").value = preset.mix;
+  document.getElementById("reverb-value").innerText = preset.mix.toFixed(2);
+}
+
 function rateDefault() {
   const rateSlider = document.getElementById("rate-slider");
   const rateValueLabel = document.getElementById("rate-value");
@@ -203,6 +226,10 @@ document.addEventListener("DOMContentLoaded", () => {
       reverbValueLabel.innerText = `${newReverbMix.toFixed(2)}`;
       storeReverbMix(newReverbMix);
     }
+  });
+
+  document.querySelectorAll(".preset-btn").forEach((button) => {
+    button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });
 
   const toggleButton = document.getElementById("toggle-button");
