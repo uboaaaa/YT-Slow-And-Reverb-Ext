@@ -39,7 +39,7 @@ function updateStatus(status) {
     document.body.classList.add("no-access");
     document.body.classList.remove("no-audio", "extension-off");
   } else if (status === "Audio paused!") {
-    statusIcon.src = "icons/pause.svg"; //TODO: replace placeholder icon
+    statusIcon.src = "icons/pause.svg"; 
     document.body.classList.remove("no-audio", "extension-off");
   } else if (status === "Extension is off!") {
     statusIcon.src = "icons/off.svg";

@@ -1,5 +1,5 @@
-# YouTube Slow and Reverb Controls
-...is a small extension for Firefox that lets you control the speed and reverb of YouTube videos for a more flexible and enjoyable music-listening experience. Please use this repo to file bugs or requests!
+# Lento: Slow, Reverb and Bass Boost on music streaming sites.
+TBD
 
 # Instructions
 - Pin the extension to your toolbar.
@@ -14,7 +14,7 @@ https://github.com/user-attachments/assets/e6622f78-1455-4c6b-9148-f4a9199184ee
 
 
 
-# Planned features
+# Changes
 - Total script rewrite
 - Speed+reverb presets
 - "Snappier" dragging for sliders
