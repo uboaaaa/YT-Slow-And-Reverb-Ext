@@ -10,7 +10,7 @@ const DEFAULT_REVERB_MIX = 0.0;
 // A preset is just a hand moving both sliders at once: same storage writes,
 // same gating. The engine has no idea presets exist.
 const PRESETS = {
-  slowrev: { rate: 0.75, mix: 0.7 },
+  slowrev: { rate: 0.85, mix: 0.5 },
   default: { rate: DEFAULT_RATE, mix: DEFAULT_REVERB_MIX },
   nightcore: { rate: 1.35, mix: 0.0 },
 };
