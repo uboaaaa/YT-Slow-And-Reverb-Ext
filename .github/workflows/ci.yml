@@ -1,0 +1,38 @@
+name: CI
+
+on:
+    push:
+        branches: [main]
+    pull_request:
+
+jobs:
+    check:
+        runs-on: ubuntu-latest
+        steps:
+            - name: check out repo
+              uses: actions/checkout@v4
+
+            - name: set up Node
+              uses: actions/setup-node@v4
+              with:
+                node-version: 20
+            
+            - name: syntax check on scripts
+              run: |
+                for f in background.js content.js popup.js page-hook.js; 
+                do
+                    node --check "$f"
+                done
+            
+            - name: lint extension
+              run: npx --yes web-ext lint --source-dir . --ignore-files "tools/**" ".github/**"
+
+            - name: build extension zip
+              run: npx --yes web-ext build --source-dir . --artifacts-dir dist -- ignore-files "tools/**" ".github/**"
+            
+            - name: upload zip
+              uses: actions/upload-artifact@v4
+              with:
+                name: extension-build
+                path: dist/*.zip
+                
