@@ -28,7 +28,7 @@ jobs:
               run: npx --yes web-ext lint --source-dir . --ignore-files "tools/**" ".github/**"
 
             - name: build extension zip
-              run: npx --yes web-ext build --source-dir . --artifacts-dir dist -- ignore-files "tools/**" ".github/**"
+              run: npx --yes web-ext build --source-dir . --artifacts-dir dist --ignore-files "tools/**" ".github/**"
             
             - name: upload zip
               uses: actions/upload-artifact@v4
