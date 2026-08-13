@@ -1,0 +1,36 @@
+name: Bug report
+
+labels: ["bug"]
+body:
+  - type: input
+    id: site
+    attributes:
+      label: Which site were you on (URL, if possible)?
+      placeholder: e.g. https://soundcloud.com/some-artist/some-track
+    validations:
+      required: true
+    
+  - type: textarea
+    id: happened
+    attributes:
+      label: What happened?
+      placeholder: e.g., moved the reverb slider and the audio went silent.
+    validations:
+      required: true
+    
+  - type: textarea
+    id: expected
+    attributes: 
+      label: What was supposed to happen?
+      placeholder: e.g., music should've played with reverb
+    validations:
+      required: true
+    
+  - type: input
+    id: browser
+    attributes:
+      label: What browser are you using (and its version, if possible)?
+      placeholder: e.g., Firefox 143, Zen 1.x, etc.
+    validations:
+      required: true
+    

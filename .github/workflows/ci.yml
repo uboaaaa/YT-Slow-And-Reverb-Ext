@@ -15,7 +15,7 @@ jobs:
             - name: set up Node
               uses: actions/setup-node@v4
               with:
-                node-version: 20
+                node-version: 24
             
             - name: syntax check on scripts
               run: |
@@ -35,4 +35,3 @@ jobs:
               with:
                 name: extension-build
                 path: dist/*.zip
-                
