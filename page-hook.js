@@ -482,6 +482,26 @@
     }
   }
 
+  // Players that break when their media element is captured or reloaded:
+  // Apple MusicKit (music.apple.com and third-party embeds) wedges its state
+  // machine when the CORS reload interrupts its play() call; Amazon's player
+  // refuses DRM playback outright once its element feeds an audio graph (it
+  // checks mozAudioCaptured). Speed still applies; reverb/bass are skipped.
+  let warnedStrictPlayer = false;
+  function hasStrictPlayer() {
+    const strict =
+      typeof window.MusicKit !== "undefined" ||
+      /(^|\.)music\.amazon\./.test(window.location.hostname);
+    if (strict && !warnedStrictPlayer) {
+      warnedStrictPlayer = true;
+      console.log(
+        "[Slow and Reverb] this site's player breaks when its audio is " +
+          "rerouted; reverb and bass are disabled here. Speed still works."
+      );
+    }
+    return strict;
+  }
+
   function needsCrossOriginOptIn(element) {
     if (element.crossOrigin) return false;
 
@@ -559,6 +579,7 @@
     if (connectedElements.has(element)) return;
     if (unusableElements.has(element)) return;
     if (reloadingElements.has(element)) return;
+    if (hasStrictPlayer()) return;
     // The page's graph carries it; our destination patch adds the reverb.
     if (pageOwnedElements.has(element)) return;
 
