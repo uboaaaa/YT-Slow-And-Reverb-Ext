@@ -27,6 +27,11 @@
   // they can never escalate into a ratechange storm.
   const RATE_FIGHT_MIN_INTERVAL_MS = 250;
 
+  // An element that pauses this soon after one of our corrective rate writes
+  // is treating the write as a reason to stop (e.g. Spotify hover previews);
+  // back off speed control for it permanently.
+  const RATE_BACKOFF_WINDOW_MS = 300;
+
   // DRM hands-off guards: when on, DRM elements are left completely untouched
   // (some environments kill DRM playback when modified). Off by default —
   // standard Firefox is unaffected; a user-facing toggle is planned.
@@ -66,6 +71,7 @@
   const reloadingElements = new WeakSet(); // mid CORS reload
   const drmElements = new WeakSet(); // DRM: hands off entirely, speed included
   const rateEligible = new WeakSet(); // cleared for speed: playing and non-DRM
+  const rateBackoff = new WeakSet(); // pauses on rate writes; speed given up
   let ownContext = null; // our AudioContext for DOM media elements
 
   let warnedAboutSegmentedPlayback = false;
@@ -326,6 +332,15 @@
   }
 
   // ------------------------------------------- acquisition: media elements
+  // True when any tracked element other than the given one is playing, e.g. a
+  // main track while a transient hover preview comes and goes.
+  function anyOtherElementPlaying(excluded) {
+    for (const element of liveRefs(speedElementRefs)) {
+      if (element !== excluded && !element.paused) return true;
+    }
+    return false;
+  }
+
   // Clear an element for speed control and apply the current rate.
   function makeRateEligible(element) {
     rateEligible.add(element);
@@ -352,6 +367,7 @@
     // has been checked for DRM at that moment. Applying earlier (at creation)
     // would touch DRM elements before the encrypted event can fire.
     const enableRate = () => {
+      if (rateBackoff.has(element)) return;
       if (DRM_SPEED_GUARD && (drmElements.has(element) || element.mediaKeys)) {
         return;
       }
@@ -388,9 +404,37 @@
     });
 
     element.addEventListener("pause", () => {
-      // Cut the reverb tail on our chain; applySettings restores it on play.
+      // Cut the reverb tail on our chain, but only when nothing else is still
+      // playing — a transient element (hover preview) pausing must not mute
+      // the wet path under the main track. applySettings restores it on play.
       const chain = ownContext && chains.get(ownContext);
-      if (chain) chain.wet.gain.setValueAtTime(0, ownContext.currentTime);
+      if (chain && !anyOtherElementPlaying(element)) {
+        chain.wet.gain.setValueAtTime(0, ownContext.currentTime);
+      }
+
+      // Pausing right after a corrective rate write is the signature of a
+      // player that stops when its rate is touched; leave its speed alone
+      // for good and hand its rate back.
+      if (
+        rateFightCount > 0 &&
+        Date.now() - lastRateFight < RATE_BACKOFF_WINDOW_MS &&
+        !rateBackoff.has(element)
+      ) {
+        rateBackoff.add(element);
+        rateEligible.delete(element);
+        try {
+          element.playbackRate = 1;
+          element.preservesPitch = true;
+          element.mozPreservesPitch = true;
+        } catch (error) {
+          // Element torn down. Harmless.
+        }
+        console.warn(
+          "[Slow and Reverb] this element pauses when its rate is changed; " +
+            "giving up speed control for it."
+        );
+      }
+
       // Diagnostic for players that pause themselves when the rate is changed.
       if (rateFightCount > 0 || Math.abs(element.playbackRate - 1) > 0.001) {
         console.log(
@@ -507,6 +551,12 @@
     }
 
     if (needsCrossOriginOptIn(element)) {
+      // The CORS reload rips the element out from under the site's player;
+      // never do that while other audio is playing (e.g. a hover preview next
+      // to a live main track). Not marked unusable: a later solo play can
+      // still get reverb.
+      if (anyOtherElementPlaying(element)) return;
+
       const granted = await reloadWithCrossOrigin(element);
       if (!granted) {
         unusableElements.add(element);
