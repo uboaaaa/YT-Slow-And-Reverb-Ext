@@ -72,6 +72,8 @@
   const drmElements = new WeakSet(); // DRM: hands off entirely, speed included
   const rateEligible = new WeakSet(); // cleared for speed: playing and non-DRM
   const rateBackoff = new WeakSet(); // pauses on rate writes; speed given up
+  const corsPreempted = new WeakSet(); // opted into CORS before first fetch
+  const corsFallback = new WeakSet(); // CORS opt-in refused; never preempt again
   let ownContext = null; // our AudioContext for DOM media elements
 
   let warnedAboutSegmentedPlayback = false;
@@ -482,24 +484,66 @@
     }
   }
 
-  // Players that break when their media element is captured or reloaded:
-  // Apple MusicKit (music.apple.com and third-party embeds) wedges its state
-  // machine when the CORS reload interrupts its play() call; Amazon's player
-  // refuses DRM playback outright once its element feeds an audio graph (it
-  // checks mozAudioCaptured). Speed still applies; reverb/bass are skipped.
+  // Players that break when their media element is captured or reloaded.
+  // Amazon's player refuses DRM playback once its element feeds an audio
+  // graph (it checks mozAudioCaptured), so capture is off entirely there.
+  // Apple MusicKit (music.apple.com and third-party embeds) only wedges when
+  // the CORS reload interrupts its play(); elements opted into CORS before
+  // their first fetch (maybePreemptCors) are safe to capture.
   let warnedStrictPlayer = false;
-  function hasStrictPlayer() {
-    const strict =
-      typeof window.MusicKit !== "undefined" ||
-      /(^|\.)music\.amazon\./.test(window.location.hostname);
-    if (strict && !warnedStrictPlayer) {
-      warnedStrictPlayer = true;
-      console.log(
-        "[Slow and Reverb] this site's player breaks when its audio is " +
-          "rerouted; reverb and bass are disabled here. Speed still works."
-      );
+  function warnStrictOnce() {
+    if (warnedStrictPlayer) return;
+    warnedStrictPlayer = true;
+    console.log(
+      "[Slow and Reverb] this site's player breaks when its audio is " +
+        "rerouted; reverb and bass are limited here. Speed still works."
+    );
+  }
+
+  function playerBreaksOnCapture() {
+    return /(^|\.)music\.amazon\./.test(window.location.hostname);
+  }
+
+  function playerBreaksOnReload() {
+    return typeof window.MusicKit !== "undefined";
+  }
+
+  // Opt an element into CORS mode before its first fetch of a cross-origin
+  // URL, so its audio is never tainted and reverb needs no later reload.
+  // Anonymous mode sends no cookies; if the server refuses the request, the
+  // error listener undoes the opt-in and loads plain, once per element.
+  function maybePreemptCors(element, value) {
+    if (element.crossOrigin) return;
+    if (corsFallback.has(element)) return;
+    if (typeof value !== "string" || value === "") return;
+    if (EXEMPT_SCHEMES.some((scheme) => value.startsWith(scheme))) return;
+
+    try {
+      if (new URL(value, document.baseURI).origin === window.location.origin) {
+        return;
+      }
+    } catch (error) {
+      return; // not a parseable URL; leave it alone
     }
-    return strict;
+
+    if (!corsPreempted.has(element)) {
+      element.addEventListener("error", () => {
+        // Only undo a fetch that failed outright before any data arrived;
+        // mid-play network errors are not ours to handle.
+        if (!corsPreempted.has(element)) return;
+        if (element.readyState !== 0) return;
+        corsPreempted.delete(element);
+        corsFallback.add(element);
+        const source = element.currentSrc || element.src;
+        element.removeAttribute("crossorigin");
+        if (source) {
+          element.src = source;
+          element.load();
+        }
+      });
+    }
+    corsPreempted.add(element);
+    element.crossOrigin = "anonymous";
   }
 
   function needsCrossOriginOptIn(element) {
@@ -579,7 +623,14 @@
     if (connectedElements.has(element)) return;
     if (unusableElements.has(element)) return;
     if (reloadingElements.has(element)) return;
-    if (hasStrictPlayer()) return;
+    if (playerBreaksOnCapture()) {
+      warnStrictOnce();
+      return;
+    }
+    if (playerBreaksOnReload() && needsCrossOriginOptIn(element)) {
+      warnStrictOnce();
+      return;
+    }
     // The page's graph carries it; our destination patch adds the reverb.
     if (pageOwnedElements.has(element)) return;
 
@@ -786,6 +837,9 @@
     const PatchedAudio = function (...args) {
       const element = new OriginalAudio(...args);
       trackElementForSpeed(element);
+      // new Audio(url) bypasses the src setter hook; the fetch has not
+      // started yet, so the opt-in still lands in time.
+      if (args.length > 0) maybePreemptCors(element, String(args[0]));
       return element;
     };
     PatchedAudio.prototype = OriginalAudio.prototype;
@@ -822,6 +876,7 @@
       get: srcDescriptor.get,
       set: function (value) {
         trackElementForSpeed(this);
+        maybePreemptCors(this, value);
         return srcDescriptor.set.call(this, value);
       },
       configurable: true,
