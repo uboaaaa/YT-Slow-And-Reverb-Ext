@@ -1,10 +1,6 @@
-// Engine: all audio work. Runs in the page's own JavaScript context via
-// world: "MAIN" in the manifest — the browser injects it, so page CSP
-// does not apply and no injection trick is needed.
-//
-// Two layers. Acquisition notices audio (media elements, page-built audio
-// graphs, raw buffer playback) and feeds the registry. Effects applies speed
-// and reverb to whatever the registry holds, without caring where it came from.
+// Engine: all audio work. Injected into the page world (world: "MAIN"), so
+// page CSP does not apply. Acquisition notices audio and feeds the registries;
+// effects apply speed/reverb/bass to whatever the registries hold.
 
 (() => {
   if (window.__slowAndReverbHookInstalled) return;
@@ -27,16 +23,13 @@
 
   const RATE_REAPPLY_INTERVAL_MS = 500;
 
-  // Minimum gap between corrective writes from the ratechange listener. An
-  // unthrottled counter-write can escalate into an infinite ratechange storm
-  // if anything else on the page is also managing the rate.
+  // Minimum gap between corrective writes from the ratechange listener, so
+  // they can never escalate into a ratechange storm.
   const RATE_FIGHT_MIN_INTERVAL_MS = 250;
 
-  // DRM hands-off guards. Some environments stop playback of DRM-protected
-  // media when its rate or audio path is modified; with a guard on, such
-  // elements are left completely untouched so playback is never disrupted.
-  // Off by default for compatibility with standard Firefox, where playback
-  // is unaffected; a user-facing toggle is planned.
+  // DRM hands-off guards: when on, DRM elements are left completely untouched
+  // (some environments kill DRM playback when modified). Off by default —
+  // standard Firefox is unaffected; a user-facing toggle is planned.
   const DRM_SPEED_GUARD = false;
   const DRM_REVERB_GUARD = false;
 
@@ -61,9 +54,8 @@
   const effectiveBass = () => (isExtensionOn ? bassBoost : 0);
 
   // -------------------------------------------------------------- registry
-  // Iterable registries hold WeakRefs: a strong Set would pin every media
-  // element a single-page app ever created for the page's whole lifetime,
-  // which is a memory leak on long sessions. Dead refs are swept on iteration.
+  // Registries hold WeakRefs so media elements are never pinned for the
+  // page's lifetime; dead refs are swept on iteration.
   const speedElementRefs = new Set(); // every media element seen; speed targets
   const seenSpeedElements = new WeakSet(); // membership test for the above
   const bufferSourceRefs = new Set(); // whole-track buffer nodes; speed targets
@@ -77,7 +69,6 @@
   let ownContext = null; // our AudioContext for DOM media elements
 
   let warnedAboutSegmentedPlayback = false;
-  let loggedSpeedElement = false;
 
   // Yields live targets and sweeps garbage-collected ones out of the set.
   function* liveRefs(refSet) {
@@ -95,9 +86,6 @@
   // popup uses it to show why the controls are unavailable.
   let drmBlocked = false;
 
-  // Some players stop playback entirely when their DRM-protected media is
-  // modified, and the stop can persist until the page is reloaded. When the
-  // guards are on, such elements get no effects at all.
   function markElementDrm(element) {
     if (drmElements.has(element)) return;
 
@@ -338,6 +326,14 @@
   }
 
   // ------------------------------------------- acquisition: media elements
+  // Clear an element for speed control and apply the current rate.
+  function makeRateEligible(element) {
+    rateEligible.add(element);
+    element.preservesPitch = false;
+    element.mozPreservesPitch = false;
+    element.playbackRate = effectiveRate();
+  }
+
   function trackElementForSpeed(element) {
     if (!element || seenSpeedElements.has(element)) return;
 
@@ -359,10 +355,7 @@
       if (DRM_SPEED_GUARD && (drmElements.has(element) || element.mediaKeys)) {
         return;
       }
-      rateEligible.add(element);
-      element.preservesPitch = false;
-      element.mozPreservesPitch = false;
-      element.playbackRate = effectiveRate();
+      makeRateEligible(element);
     };
 
     element.addEventListener("playing", enableRate);
@@ -412,15 +405,6 @@
       }
       reportState();
     });
-
-    if (!loggedSpeedElement) {
-      loggedSpeedElement = true;
-      console.log(
-        "[Slow and Reverb] found a media element for speed control (in the DOM: " +
-          element.isConnected +
-          ")"
-      );
-    }
 
     reportState();
   }
@@ -533,10 +517,7 @@
         return;
       }
       // The reload reset the rate; this element is confirmed non-DRM.
-      rateEligible.add(element);
-      element.preservesPitch = false;
-      element.mozPreservesPitch = false;
-      element.playbackRate = effectiveRate();
+      makeRateEligible(element);
     }
 
     if (connectedElements.has(element)) return; // connected while awaiting

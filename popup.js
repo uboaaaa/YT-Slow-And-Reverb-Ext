@@ -1,14 +1,16 @@
 // Popup: renders the controls and writes settings to storage. Content scripts
 // in every frame react to storage changes; nothing is messaged directly.
 
-const DEFAULT_RATE = 1.0;
-const DEFAULT_REVERB_MIX = 0.0;
-const DEFAULT_BASS_BOOST = 0.0;
-
+// One entry per slider; wireSlider() attaches all behavior from this table.
+const SLIDERS = [
+  { id: "rate", storageKey: "playbackRate", presetKey: "rate", default: 1.0 },
+  { id: "reverb", storageKey: "reverbMix", presetKey: "mix", default: 0.0 },
+  { id: "bass", storageKey: "bassBoost", presetKey: "bass", default: 0.0 },
+];
 
 const PRESETS = {
   slowrev: { rate: 0.85, mix: 0.5, bass: 0.0 },
-  default: { rate: DEFAULT_RATE, mix: DEFAULT_REVERB_MIX, bass: DEFAULT_BASS_BOOST },
+  default: { rate: 1.0, mix: 0.0, bass: 0.0 },
   nightcore: { rate: 1.35, mix: 0.0, bass: 0.0 },
 };
 
@@ -16,6 +18,22 @@ const PRESETS = {
 const STATUS_TIMEOUT_MS = 400;
 
 let isExtensionOn = true;
+
+function sliderElements(config) {
+  return {
+    slider: document.getElementById(config.id + "-slider"),
+    label: document.getElementById(config.id + "-value"),
+    container: document.getElementById(config.id + "-slider-container"),
+  };
+}
+
+// Update the slider UI and persist the value.
+function setSlider(config, value) {
+  const { slider, label } = sliderElements(config);
+  slider.value = value;
+  label.innerText = value.toFixed(2);
+  browser.storage.local.set({ [config.storageKey]: value });
+}
 
 // Dot, toggle label, and dimming all follow the on/off state.
 function updateVisualState() {
@@ -32,18 +50,21 @@ function updateVisualState() {
 
 // Highlight the preset matching the current slider values, if any.
 function updateActivePreset() {
-  const rate = parseFloat(document.getElementById("rate-slider").value);
-  const mix = parseFloat(document.getElementById("reverb-slider").value);
-  const bass = parseFloat(document.getElementById("bass-slider").value);
+  const current = {};
+  SLIDERS.forEach((config) => {
+    current[config.presetKey] = parseFloat(sliderElements(config).slider.value);
+  });
 
   document.querySelectorAll(".preset-btn").forEach((button) => {
     const preset = PRESETS[button.dataset.preset];
     button.classList.toggle(
       "is-active",
       !!preset &&
-        Math.abs(preset.rate - rate) < 0.001 &&
-        Math.abs(preset.mix - mix) < 0.001 &&
-        Math.abs(preset.bass - bass) < 0.001
+        SLIDERS.every(
+          (config) =>
+            Math.abs(preset[config.presetKey] - current[config.presetKey]) <
+            0.001
+        )
     );
   });
 }
@@ -94,9 +115,9 @@ function refreshDrmState() {
         ? "This site's audio is DRM-protected; its player may break playback " +
           "when effects are applied, so the controls are disabled."
         : "";
-      document.getElementById("rate-slider-container").title = explanation;
-      document.getElementById("reverb-slider-container").title = explanation;
-      document.getElementById("bass-slider-container").title = explanation;
+      SLIDERS.forEach((config) => {
+        sliderElements(config).container.title = explanation;
+      });
     });
   });
 }
@@ -118,31 +139,56 @@ function applyPreset(name) {
   const preset = PRESETS[name];
   if (!preset) return;
 
-  storePlaybackRate(preset.rate);
-  storeReverbMix(preset.mix);
-  storeBassBoost(preset.bass);
-
-  document.getElementById("rate-slider").value = preset.rate;
-  document.getElementById("rate-value").innerText = preset.rate.toFixed(2);
-  document.getElementById("reverb-slider").value = preset.mix;
-  document.getElementById("reverb-value").innerText = preset.mix.toFixed(2);
-  document.getElementById("bass-slider").value = preset.bass;
-  document.getElementById("bass-value").innerText = preset.bass.toFixed(2);
-
+  SLIDERS.forEach((config) => setSlider(config, preset[config.presetKey]));
   updateActivePreset();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-  const rateSlider = document.getElementById("rate-slider");
-  const rateValueLabel = document.getElementById("rate-value");
-  const reverbSlider = document.getElementById("reverb-slider");
-  const reverbValueLabel = document.getElementById("reverb-value");
-  const bassSlider = document.getElementById("bass-slider");
-  const bassValueLabel = document.getElementById("bass-value");
+function wireSlider(config) {
+  const { slider, label, container } = sliderElements(config);
 
-  // Load the extension state and stored settings from storage.
+  slider.addEventListener("input", () => {
+    if (!isExtensionOn) return;
+    const value = parseFloat(slider.value);
+    label.innerText = value.toFixed(2);
+    browser.storage.local.set({ [config.storageKey]: value });
+    updateActivePreset();
+  });
+
+  document.getElementById("reset-" + config.id).addEventListener("click", () => {
+    setSlider(config, config.default);
+    updateActivePreset();
+  });
+
+  container.addEventListener(
+    "wheel",
+    (event) => {
+      if (!isExtensionOn) return;
+      event.preventDefault();
+
+      const step = parseFloat(slider.step) || 0.05;
+      const direction = event.deltaY < 0 ? 1 : -1;
+      const min = parseFloat(slider.min);
+      const max = parseFloat(slider.max);
+
+      // Round to cents so repeated steps don't accumulate float dust.
+      const next =
+        Math.round(
+          Math.min(
+            max,
+            Math.max(min, parseFloat(slider.value) + direction * step)
+          ) * 100
+        ) / 100;
+
+      setSlider(config, next);
+      updateActivePreset();
+    },
+    { passive: false }
+  );
+}
+
+document.addEventListener("DOMContentLoaded", () => {
   browser.storage.local
-    .get(["isExtensionOn", "playbackRate", "reverbMix", "bassBoost"])
+    .get(["isExtensionOn", ...SLIDERS.map((config) => config.storageKey)])
     .then((result) => {
       isExtensionOn =
         result.isExtensionOn !== undefined ? result.isExtensionOn : true;
@@ -153,16 +199,12 @@ document.addEventListener("DOMContentLoaded", () => {
         browser.storage.local.set({ isExtensionOn: true });
       }
 
-      const storedRate = result.playbackRate || DEFAULT_RATE;
-      const storedReverbMix = result.reverbMix || DEFAULT_REVERB_MIX;
-      const storedBassBoost = result.bassBoost || DEFAULT_BASS_BOOST;
-
-      rateSlider.value = storedRate;
-      rateValueLabel.innerText = storedRate.toFixed(2);
-      reverbSlider.value = storedReverbMix;
-      reverbValueLabel.innerText = storedReverbMix.toFixed(2);
-      bassSlider.value = storedBassBoost;
-      bassValueLabel.innerText = storedBassBoost.toFixed(2);
+      SLIDERS.forEach((config) => {
+        const value = result[config.storageKey] || config.default;
+        const { slider, label } = sliderElements(config);
+        slider.value = value;
+        label.innerText = value.toFixed(2);
+      });
 
       updateVisualState();
       updateActivePreset();
@@ -186,115 +228,13 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  rateSlider.addEventListener("input", (event) => {
-    if (!isExtensionOn) return;
-    const newRate = parseFloat(event.target.value);
-    rateValueLabel.innerText = newRate.toFixed(2);
-    storePlaybackRate(newRate);
-    updateActivePreset();
-  });
-
-  reverbSlider.addEventListener("input", (event) => {
-    if (!isExtensionOn) return;
-    const newReverbMix = parseFloat(event.target.value);
-    reverbValueLabel.innerText = newReverbMix.toFixed(2);
-    storeReverbMix(newReverbMix);
-    updateActivePreset();
-  });
-
-  bassSlider.addEventListener("input", (event) => {
-    if (!isExtensionOn) return;
-    const newBassBoost = parseFloat(event.target.value);
-    bassValueLabel.innerText = newBassBoost.toFixed(2);
-    storeBassBoost(newBassBoost);
-    updateActivePreset();
-  });
+  SLIDERS.forEach(wireSlider);
 
   document.querySelectorAll(".preset-btn").forEach((button) => {
     button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });
 
-  const addWheelSupport = (container, slider, label, store) => {
-    container.addEventListener(
-      "wheel",
-      (event) => {
-        if (!isExtensionOn) return;
-        event.preventDefault();
-
-        const step = parseFloat(slider.step) || 0.05;
-        const direction = event.deltaY < 0 ? 1 : -1;
-        const min = parseFloat(slider.min);
-        const max = parseFloat(slider.max);
-
-        // Round to cents so repeated steps don't accumulate float dust.
-        const next =
-          Math.round(
-            Math.min(
-              max,
-              Math.max(min, parseFloat(slider.value) + direction * step)
-            ) * 100
-          ) / 100;
-
-        slider.value = next;
-        label.innerText = next.toFixed(2);
-        store(next);
-        updateActivePreset();
-      },
-      { passive: false }
-    );
-  };
-
-  addWheelSupport(
-    document.getElementById("rate-slider-container"),
-    rateSlider,
-    rateValueLabel,
-    storePlaybackRate
-  );
-  addWheelSupport(
-    document.getElementById("reverb-slider-container"),
-    reverbSlider,
-    reverbValueLabel,
-    storeReverbMix
-  );
-  addWheelSupport(
-    document.getElementById("bass-slider-container"),
-    bassSlider,
-    bassValueLabel,
-    storeBassBoost
-  );
-
-  document.getElementById("toggle-button").addEventListener("click", toggleExtension);
-
-  document.getElementById("reset-rate").addEventListener("click", () => {
-    storePlaybackRate(DEFAULT_RATE);
-    rateSlider.value = DEFAULT_RATE;
-    rateValueLabel.innerText = DEFAULT_RATE.toFixed(2);
-    updateActivePreset();
-  });
-
-  document.getElementById("reset-reverb").addEventListener("click", () => {
-    storeReverbMix(DEFAULT_REVERB_MIX);
-    reverbSlider.value = DEFAULT_REVERB_MIX;
-    reverbValueLabel.innerText = DEFAULT_REVERB_MIX.toFixed(2);
-    updateActivePreset();
-  });
-
-  document.getElementById("reset-bass").addEventListener("click", () => {
-    storeBassBoost(DEFAULT_BASS_BOOST);
-    bassSlider.value = DEFAULT_BASS_BOOST;
-    bassValueLabel.innerText = DEFAULT_BASS_BOOST.toFixed(2);
-    updateActivePreset();
-  });
+  document
+    .getElementById("toggle-button")
+    .addEventListener("click", toggleExtension);
 });
-
-function storePlaybackRate(rate) {
-  browser.storage.local.set({ playbackRate: rate });
-}
-
-function storeReverbMix(mix) {
-  browser.storage.local.set({ reverbMix: mix });
-}
-
-function storeBassBoost(bass) {
-  browser.storage.local.set({ bassBoost: bass });
-}

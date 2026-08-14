@@ -51,10 +51,6 @@ a {
   color: #e95d50;
 }
 
-a:hover {
-  color: #e95d50;
-}
-
 /* HEADER */
 .header-container header {
   display: flex;
@@ -130,7 +126,6 @@ input[type="range"] {
   flex: 1;
   -webkit-appearance: none;
   appearance: none;
-  width: 100%;
   height: 4px;
   margin: 0;
   border-radius: 99px;
@@ -300,24 +295,16 @@ a:focus-visible {
 
 /* STATES (classes set by popup.js; support links stay live in all of them) */
 body.extension-off .slider-container,
-body.extension-off .preset-container {
-  opacity: 0.4;
-  pointer-events: none;
-}
-
+body.extension-off .preset-container,
 body.no-access .slider-container,
 body.no-access .preset-container,
-body.no-access .button-container {
+body.no-access .button-container,
+body.drm-blocked .slider-container,
+body.drm-blocked .preset-container {
   opacity: 0.4;
   pointer-events: none;
 }
 
 body.no-access .header-container {
   cursor: pointer;
-}
-
-body.drm-blocked .slider-container,
-body.drm-blocked .preset-container {
-  opacity: 0.4;
-  pointer-events: none;
 }
