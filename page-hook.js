@@ -202,12 +202,15 @@
     chain.bass.gain.value = 0;
 
     // origConnect: the patched connect would loop these back into the chain.
+    // The bass->convolver link is managed by applyMix: a connected convolver
+    // burns CPU continuously even when the wet gain is zero, so it is only
+    // wired in while the mix is actually above zero.
     origConnect.call(chain.input, chain.bass);
     origConnect.call(chain.bass, chain.dry);
-    origConnect.call(chain.bass, chain.convolver);
     origConnect.call(chain.convolver, chain.wet);
     origConnect.call(chain.dry, context.destination);
     origConnect.call(chain.wet, context.destination);
+    chain.convolverConnected = false;
 
     chains.set(context, chain);
     applyMix(context, chain);
@@ -219,7 +222,15 @@
       })
       .catch(() => {});
 
-    context.addEventListener("statechange", reportState);
+    context.addEventListener("statechange", () => {
+      // A closed context can never make sound again; dropping its chain lets
+      // the context and the ~MB impulse buffer be garbage collected.
+      if (context.state === "closed") {
+        chains.delete(context);
+        if (context === ownContext) ownContext = null;
+      }
+      reportState();
+    });
     reportState();
 
     if (context !== ownContext) {
@@ -252,6 +263,17 @@
       chain.convolver.buffer ? wetAdjusted : 0,
       context.currentTime
     );
+
+    // Wire the convolver in only while it is audible (see getChain). Dropping
+    // the mix to zero cuts any ringing tail, same as pausing does.
+    const wetAudible = wetValue > 0.001 && !!chain.convolver.buffer;
+    if (wetAudible && !chain.convolverConnected) {
+      origConnect.call(chain.bass, chain.convolver);
+      chain.convolverConnected = true;
+    } else if (!wetAudible && chain.convolverConnected) {
+      origDisconnect.call(chain.bass, chain.convolver);
+      chain.convolverConnected = false;
+    }
 
     chain.bass.gain.setValueAtTime(
       effectiveBass() * MAX_BASS_DECIBELS,
