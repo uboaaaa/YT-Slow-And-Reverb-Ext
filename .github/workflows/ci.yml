@@ -24,14 +24,28 @@ jobs:
                     node --check "$f"
                 done
             
-            - name: lint extension
-              run: npx --yes web-ext lint --source-dir . --ignore-files "tools/**" ".github/**"
+            - name: stage browser builds
+              run: node tools/build.mjs
 
-            - name: build extension zip
-              run: npx --yes web-ext build --source-dir . --artifacts-dir dist --ignore-files "tools/**" ".github/**"
-            
-            - name: upload zip
+            - name: lint extension
+              run: npx --yes web-ext lint --source-dir dist/firefox
+
+            - name: build firefox zip
+              run: npx --yes web-ext build --source-dir dist/firefox --artifacts-dir artifacts-firefox
+
+            - name: build chrome zip
+              run: |
+                mkdir -p artifacts-chrome
+                cd dist/chrome && zip -r ../../artifacts-chrome/lento-chrome.zip .
+
+            - name: upload firefox zip
               uses: actions/upload-artifact@v4
               with:
-                name: extension-build
-                path: dist/*.zip
+                name: lento-firefox
+                path: artifacts-firefox/*.zip
+
+            - name: upload chrome zip
+              uses: actions/upload-artifact@v4
+              with:
+                name: lento-chrome
+                path: artifacts-chrome/lento-chrome.zip

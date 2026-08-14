@@ -2,6 +2,10 @@
 // injects into the page via world: "MAIN"), and answers the popup from the
 // engine's status reports.
 
+globalThis.browser ??= chrome; // Chrome has no browser namespace; Firefox does
+
+
+
 const FROM_CONTENT_SCRIPT = "slow-and-reverb";
 const FROM_PAGE = "slow-and-reverb-page";
 

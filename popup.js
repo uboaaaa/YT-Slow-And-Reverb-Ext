@@ -1,6 +1,10 @@
 // Popup: renders the controls and writes settings to storage. Content scripts
 // in every frame react to storage changes; nothing is messaged directly.
 
+globalThis.browser ??= chrome; // Chrome has no browser namespace; Firefox does
+
+
+
 // One entry per slider; wireSlider() attaches all behavior from this table.
 const SLIDERS = [
   { id: "rate", storageKey: "playbackRate", presetKey: "rate", default: 1.0 },
