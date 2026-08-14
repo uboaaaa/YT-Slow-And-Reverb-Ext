@@ -8,6 +8,7 @@ const FROM_PAGE = "slow-and-reverb-page";
 let isExtensionOn = true;
 let storedPlaybackRate = 1.0;
 let storedReverbMix = 0.0;
+let storedBassBoost = 0.0;
 
 // Latest status pushed up by the engine.
 let engineStatus = { hasMedia: false, playing: false, drmBlocked: false };
@@ -33,6 +34,7 @@ function sendSettings() {
       isExtensionOn,
       playbackRate: storedPlaybackRate,
       reverbMix: storedReverbMix,
+      bassBoost: storedBassBoost,
     },
     "*"
   );
@@ -57,12 +59,13 @@ window.addEventListener("message", (event) => {
 
 // Settings live in storage; every frame in every tab reacts to changes there.
 browser.storage.local
-  .get(["isExtensionOn", "playbackRate", "reverbMix"])
+  .get(["isExtensionOn", "playbackRate", "reverbMix", "bassBoost"])
   .then((result) => {
     isExtensionOn =
       result.isExtensionOn !== undefined ? result.isExtensionOn : true;
     storedPlaybackRate = result.playbackRate || 1.0;
     storedReverbMix = result.reverbMix || 0.0;
+    storedBassBoost = result.bassBoost || 0.0;
     sendSettings();
   });
 
@@ -72,6 +75,7 @@ browser.storage.onChanged.addListener((changes, areaName) => {
   if (changes.isExtensionOn) isExtensionOn = changes.isExtensionOn.newValue;
   if (changes.playbackRate) storedPlaybackRate = changes.playbackRate.newValue;
   if (changes.reverbMix) storedReverbMix = changes.reverbMix.newValue;
+  if (changes.bassBoost) storedBassBoost = changes.bassBoost.newValue;
 
   sendSettings();
 });

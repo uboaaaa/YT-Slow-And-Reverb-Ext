@@ -17,6 +17,14 @@
   // changing their rate only desynchronises them.
   const MIN_SPEEDABLE_BUFFER_SECONDS = 30;
 
+  // Low-shelf boost below this frequency; ~200Hz lifts kick and bass while
+  // leaving voices alone.
+  const BASS_SHELF_HZ = 200;
+
+  // Slider 0..1 maps to 0..this many dB (+6dB is roughly double amplitude).
+  // Kept conservative to avoid clipping loud tracks.
+  const MAX_BASS_DECIBELS = 9;
+
   const RATE_REAPPLY_INTERVAL_MS = 500;
 
   // Minimum gap between corrective writes from the ratechange listener. An
@@ -46,9 +54,11 @@
   let isExtensionOn = true;
   let playbackRate = 1.0;
   let reverbMix = 0.0;
+  let bassBoost = 0.0;
 
   const effectiveRate = () => (isExtensionOn ? playbackRate : 1.0);
   const effectiveMix = () => (isExtensionOn ? reverbMix : 0);
+  const effectiveBass = () => (isExtensionOn ? bassBoost : 0);
 
   // -------------------------------------------------------------- registry
   // Iterable registries hold WeakRefs: a strong Set would pin every media
@@ -178,22 +188,29 @@
     return offlineContext.startRendering();
   }
 
-  // input --> dry ------------------> destination
-  //       \-> convolver --> wet ---/
+  // input --> bass --> dry ------------------> destination
+  //                \-> convolver --> wet ---/
+  // Bass sits before the split so the reverb echoes the boosted signal.
   function getChain(context) {
     const existing = chains.get(context);
     if (existing) return existing;
 
     const chain = {
       input: context.createGain(),
+      bass: context.createBiquadFilter(),
       dry: context.createGain(),
       wet: context.createGain(),
       convolver: context.createConvolver(),
     };
 
+    chain.bass.type = "lowshelf";
+    chain.bass.frequency.value = BASS_SHELF_HZ;
+    chain.bass.gain.value = 0;
+
     // origConnect: the patched connect would loop these back into the chain.
-    origConnect.call(chain.input, chain.dry);
-    origConnect.call(chain.input, chain.convolver);
+    origConnect.call(chain.input, chain.bass);
+    origConnect.call(chain.bass, chain.dry);
+    origConnect.call(chain.bass, chain.convolver);
     origConnect.call(chain.convolver, chain.wet);
     origConnect.call(chain.dry, context.destination);
     origConnect.call(chain.wet, context.destination);
@@ -221,6 +238,7 @@
   function isChainNode(node, chain) {
     return (
       node === chain.input ||
+      node === chain.bass ||
       node === chain.dry ||
       node === chain.wet ||
       node === chain.convolver
@@ -238,6 +256,11 @@
     // until the impulse response is ready.
     chain.wet.gain.setValueAtTime(
       chain.convolver.buffer ? wetAdjusted : 0,
+      context.currentTime
+    );
+
+    chain.bass.gain.setValueAtTime(
+      effectiveBass() * MAX_BASS_DECIBELS,
       context.currentTime
     );
   }
@@ -749,6 +772,7 @@
       isExtensionOn = data.isExtensionOn;
       playbackRate = data.playbackRate;
       reverbMix = data.reverbMix;
+      bassBoost = data.bassBoost || 0;
       applySettings();
     }
   });
@@ -757,7 +781,7 @@
   // Run __slowAndReverbDebug() in the console to see what the engine holds.
   window.__slowAndReverbDebug = function () {
     return {
-      settings: { isExtensionOn, playbackRate, reverbMix },
+      settings: { isExtensionOn, playbackRate, reverbMix, bassBoost },
       contexts: [...chains.keys()].map((context) => ({
         state: context.state,
         sampleRate: context.sampleRate,

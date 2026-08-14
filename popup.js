@@ -1,18 +1,15 @@
 // Popup: renders the controls and writes settings to storage. Content scripts
 // in every frame react to storage changes; nothing is messaged directly.
-//
-// The bass slider is a visual placeholder: its label updates, but nothing is
-// stored or applied yet.
 
 const DEFAULT_RATE = 1.0;
 const DEFAULT_REVERB_MIX = 0.0;
+const DEFAULT_BASS_BOOST = 0.0;
 
-// A preset is just a hand moving both sliders at once: same storage writes,
-// same gating. The engine has no idea presets exist.
+
 const PRESETS = {
-  slowrev: { rate: 0.85, mix: 0.5 },
-  default: { rate: DEFAULT_RATE, mix: DEFAULT_REVERB_MIX },
-  nightcore: { rate: 1.35, mix: 0.0 },
+  slowrev: { rate: 0.85, mix: 0.5, bass: 0.0 },
+  default: { rate: DEFAULT_RATE, mix: DEFAULT_REVERB_MIX, bass: DEFAULT_BASS_BOOST },
+  nightcore: { rate: 1.35, mix: 0.0, bass: 0.0 },
 };
 
 // How long to wait for a frame to answer the DRM query before giving up.
@@ -37,6 +34,7 @@ function updateVisualState() {
 function updateActivePreset() {
   const rate = parseFloat(document.getElementById("rate-slider").value);
   const mix = parseFloat(document.getElementById("reverb-slider").value);
+  const bass = parseFloat(document.getElementById("bass-slider").value);
 
   document.querySelectorAll(".preset-btn").forEach((button) => {
     const preset = PRESETS[button.dataset.preset];
@@ -44,7 +42,8 @@ function updateActivePreset() {
       "is-active",
       !!preset &&
         Math.abs(preset.rate - rate) < 0.001 &&
-        Math.abs(preset.mix - mix) < 0.001
+        Math.abs(preset.mix - mix) < 0.001 &&
+        Math.abs(preset.bass - bass) < 0.001
     );
   });
 }
@@ -121,11 +120,14 @@ function applyPreset(name) {
 
   storePlaybackRate(preset.rate);
   storeReverbMix(preset.mix);
+  storeBassBoost(preset.bass);
 
   document.getElementById("rate-slider").value = preset.rate;
   document.getElementById("rate-value").innerText = preset.rate.toFixed(2);
   document.getElementById("reverb-slider").value = preset.mix;
   document.getElementById("reverb-value").innerText = preset.mix.toFixed(2);
+  document.getElementById("bass-slider").value = preset.bass;
+  document.getElementById("bass-value").innerText = preset.bass.toFixed(2);
 
   updateActivePreset();
 }
@@ -140,7 +142,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Load the extension state and stored settings from storage.
   browser.storage.local
-    .get(["isExtensionOn", "playbackRate", "reverbMix"])
+    .get(["isExtensionOn", "playbackRate", "reverbMix", "bassBoost"])
     .then((result) => {
       isExtensionOn =
         result.isExtensionOn !== undefined ? result.isExtensionOn : true;
@@ -153,11 +155,14 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const storedRate = result.playbackRate || DEFAULT_RATE;
       const storedReverbMix = result.reverbMix || DEFAULT_REVERB_MIX;
+      const storedBassBoost = result.bassBoost || DEFAULT_BASS_BOOST;
 
       rateSlider.value = storedRate;
       rateValueLabel.innerText = storedRate.toFixed(2);
       reverbSlider.value = storedReverbMix;
       reverbValueLabel.innerText = storedReverbMix.toFixed(2);
+      bassSlider.value = storedBassBoost;
+      bassValueLabel.innerText = storedBassBoost.toFixed(2);
 
       updateVisualState();
       updateActivePreset();
@@ -197,17 +202,18 @@ document.addEventListener("DOMContentLoaded", () => {
     updateActivePreset();
   });
 
-  // Placeholder: label only, no storage, no effect.
   bassSlider.addEventListener("input", (event) => {
-    bassValueLabel.innerText = parseFloat(event.target.value).toFixed(2);
+    if (!isExtensionOn) return;
+    const newBassBoost = parseFloat(event.target.value);
+    bassValueLabel.innerText = newBassBoost.toFixed(2);
+    storeBassBoost(newBassBoost);
+    updateActivePreset();
   });
 
   document.querySelectorAll(".preset-btn").forEach((button) => {
     button.addEventListener("click", () => applyPreset(button.dataset.preset));
   });
 
-  // Scroll-wheel nudging: one step per notch, through the same path as a drag.
-  // Listens on the whole container; the thin track is a poor wheel target.
   const addWheelSupport = (container, slider, label, store) => {
     container.addEventListener(
       "wheel",
@@ -250,6 +256,12 @@ document.addEventListener("DOMContentLoaded", () => {
     reverbValueLabel,
     storeReverbMix
   );
+  addWheelSupport(
+    document.getElementById("bass-slider-container"),
+    bassSlider,
+    bassValueLabel,
+    storeBassBoost
+  );
 
   document.getElementById("toggle-button").addEventListener("click", toggleExtension);
 
@@ -267,10 +279,11 @@ document.addEventListener("DOMContentLoaded", () => {
     updateActivePreset();
   });
 
-  // Placeholder: resets the label only.
   document.getElementById("reset-bass").addEventListener("click", () => {
-    bassSlider.value = 0;
-    bassValueLabel.innerText = "0.00";
+    storeBassBoost(DEFAULT_BASS_BOOST);
+    bassSlider.value = DEFAULT_BASS_BOOST;
+    bassValueLabel.innerText = DEFAULT_BASS_BOOST.toFixed(2);
+    updateActivePreset();
   });
 });
 
@@ -280,4 +293,8 @@ function storePlaybackRate(rate) {
 
 function storeReverbMix(mix) {
   browser.storage.local.set({ reverbMix: mix });
+}
+
+function storeBassBoost(bass) {
+  browser.storage.local.set({ bassBoost: bass });
 }
