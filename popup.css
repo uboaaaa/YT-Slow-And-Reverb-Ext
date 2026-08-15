@@ -1,10 +1,10 @@
 /* FONTS (bundled: MV3 extension-page CSP blocks remote stylesheets) */
 @font-face {
-  font-family: "Caveat";
+  font-family: "Satisfy";
   font-style: normal;
-  font-weight: 400 700;
+  font-weight: 400;
   font-display: swap;
-  src: url("fonts/Caveat-Variable.woff2") format("woff2");
+  src: url("fonts/Satisfy-Regular.woff2") format("woff2");
 }
 
 @font-face {
@@ -58,19 +58,18 @@ a {
   gap: 8px;
 }
 
-.status-dot {
-  width: 6px;
-  height: 6px;
+.status-logo {
   flex: none;
-  border-radius: 50%;
-  background-color: #e95d50;
-  box-shadow: 0 0 0 3px rgba(233, 93, 80, 0.18);
+  display: block;
+  color: #e95d50;
+  filter: drop-shadow(0 0 4px rgba(233, 93, 80, 0.55))
+    drop-shadow(0 0 9px rgba(233, 93, 80, 0.28));
 }
 
-/* off state: add class "is-off" to #status-dot */
-.status-dot.is-off {
-  background-color: transparent;
-  box-shadow: inset 0 0 0 1.5px rgba(233, 93, 80, 0.5);
+/* off state: add class "is-off" to #status-logo */
+.status-logo.is-off {
+  opacity: 0.3;
+  filter: none;
 }
 
 .status-text-container {
@@ -78,10 +77,11 @@ a {
 }
 
 #status-text {
-  font-family: "Caveat", cursive;
-  font-size: 24px;
-  font-weight: 600;
+  font-family: "Satisfy", cursive;
+  font-size: 27px;
+  font-weight: 400;
   line-height: 1;
+  padding-bottom: 2px;
   color: #e95d50;
 }
 
@@ -101,11 +101,11 @@ a {
 .slider-container h4 {
   flex: 1;
   margin: 0;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: rgba(233, 93, 80, 0.6);
+  color: rgba(233, 93, 80, 0.75);
 }
 
 .slider-container label span {
@@ -129,7 +129,7 @@ input[type="range"] {
   height: 4px;
   margin: 0;
   border-radius: 99px;
-  background-color: rgba(233, 93, 80, 0.18);
+  background-color: rgba(233, 93, 80, 0.26);
   cursor: pointer;
 }
 
@@ -169,7 +169,7 @@ input[type="range"]:focus-visible {
   border: none;
   background: transparent;
   color: #e95d50;
-  opacity: 0.5;
+  opacity: 0.62;
   cursor: pointer;
 }
 
@@ -187,7 +187,7 @@ input[type="range"]:focus-visible {
   display: flex;
   align-items: stretch;
   padding: 2px;
-  border: 1.5px solid rgba(233, 93, 80, 0.5);
+  border: 1.5px solid rgba(233, 93, 80, 0.68);
   border-radius: 99px;
   overflow: hidden;
   box-sizing: border-box;
@@ -203,7 +203,7 @@ input[type="range"]:focus-visible {
   border-radius: 99px;
   padding: 6px 2px;
   cursor: pointer;
-  opacity: 0.75;
+  opacity: 0.85;
 }
 
 .preset-btn:hover {
@@ -229,6 +229,7 @@ input[type="range"]:focus-visible {
 
 .toggle-container {
   display: flex;
+  justify-content: center;
 }
 
 #toggle-button {
@@ -274,7 +275,7 @@ input[type="range"]:focus-visible {
   padding: 2px;
   color: #e95d50;
   text-decoration: none;
-  opacity: 0.45;
+  opacity: 0.62;
 }
 
 .support-link:hover {

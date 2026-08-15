@@ -39,10 +39,11 @@ function setSlider(config, value) {
   browser.storage.local.set({ [config.storageKey]: value });
 }
 
-// Dot, toggle label, and dimming all follow the on/off state.
+// Logo glow, toggle label, and dimming all follow the on/off state: the
+// wordmark glyph is a lit neon sign while on, unlit while off.
 function updateVisualState() {
   document
-    .getElementById("status-dot")
+    .getElementById("status-logo")
     .classList.toggle("is-off", !isExtensionOn);
   document.body.classList.toggle("extension-off", !isExtensionOn);
 
