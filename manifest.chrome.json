@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Lento",
-  "version": "3.0",
+  "version": "2.0",
   "description": "slow, reverb, and bass boost controls to enhance music-listening experiences",
   "minimum_chrome_version": "111",
   "permissions": [

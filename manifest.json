@@ -1,11 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Lento",
-  "version": "3.0",
+  "version": "2.0",
   "description": "slow, reverb, and bass boost controls to enhance music-listening experiences",
   "browser_specific_settings": {
     "gecko": {
-      "id": "slow-and-reverb@uboaaaa",
+      "id": "{7df6e4c1-b2af-4492-bee8-f207267eadaa}",
       "strict_min_version": "128.0",
       "data_collection_permissions": {
         "required": ["none"]
