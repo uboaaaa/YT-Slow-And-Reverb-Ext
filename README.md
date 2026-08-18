@@ -53,11 +53,11 @@ Directory anatomy:
 - `tools/build.mjs`: stages builds for Chrome and Firefox
 
 ## Known issues
-- Issues with Spotify on Zen specifically (likely a browser issue rather than an extension one)
-- Can only control speed on Amazon Music due to issues with fetching and applying effects on content there specifically
+- Amazon Music (Firefox and Chrome): Amazon DRM blocks the processing required for reverb and bass-boost functionalities to work. Amazon Music is therefore speed-only for the time being.
+- Spotify (Zen): music streams get interrupted around the 10-second mark. This might be either a DRM or browser-side issue. I'll investigate when possible.
 
 ## Credits
-- NikkeTryHard : diagnosing playback speed persistence issue on YT music
+- @NikkeTryHard, for diagnosing the playback speed persistence issue on YT music.
 
 ## Data disclaimer
-All processing done locally, no data pertaining to the user is ever transmitted
+Lento will never transmit your data. All music processing is done locally on your machine, and nothing is ever sent to me or anyone else.
