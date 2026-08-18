@@ -1,5 +1,10 @@
-# Lento: Slow, Reverb and Bass Boost on music streaming sites.
-TBD
+# Lento
+**Slowed + reverb, nightcore, and bass boost for any music site — applied live, in your browser.**
+
+[![Firefox Add-on](https://img.shields.io/amo/v/lento?label=Firefox%20Add-on&color=FF7139&logo=firefoxbrowser)](https://addons.mozilla.org/en-US/firefox/addon/lento/)
+[![AMO Users](https://img.shields.io/amo/users/lento?color=blue)](https://addons.mozilla.org/en-US/firefox/addon/lento/)
+[![AMO Rating](https://img.shields.io/amo/rating/lento?color=brightgreen)](https://addons.mozilla.org/en-US/firefox/addon/lento/reviews/)
+[![CI](https://github.com/uboaaaa/lento-ext/actions/workflows/ci.yml/badge.svg)](https://github.com/uboaaaa/lento-ext/actions/workflows/ci.yml)
 
 # Changes
 - Total script rewrite
