@@ -21,6 +21,9 @@ const PRESETS = {
 // How long to wait for a frame to answer the DRM query before giving up.
 const STATUS_TIMEOUT_MS = 400;
 
+// Defining separate wheel step so scrolling doesn't take forever
+const WHEEL_STEP = 0.05;
+
 let isExtensionOn = true;
 
 function sliderElements(config) {
@@ -170,18 +173,20 @@ function wireSlider(config) {
       if (!isExtensionOn) return;
       event.preventDefault();
 
-      const step = parseFloat(slider.step) || 0.05;
       const direction = event.deltaY < 0 ? 1 : -1;
       const min = parseFloat(slider.min);
       const max = parseFloat(slider.max);
 
-      // Round to cents so repeated steps don't accumulate float dust.
+      // Snap to the next multiple of WHEEL_STEP in the scroll direction, so a
+      // hand-picked value like 1.01 goes to 1.05 (or 1.00), not 1.06. Rounding avoids float val accumulation
+      const steps = parseFloat(slider.value) / WHEEL_STEP;
+      const snapped =
+        direction > 0
+          ? Math.floor(steps + 1e-9) + 1
+          : Math.ceil(steps - 1e-9) - 1;
       const next =
         Math.round(
-          Math.min(
-            max,
-            Math.max(min, parseFloat(slider.value) + direction * step)
-          ) * 100
+          Math.min(max, Math.max(min, snapped * WHEEL_STEP)) * 100
         ) / 100;
 
       setSlider(config, next);
