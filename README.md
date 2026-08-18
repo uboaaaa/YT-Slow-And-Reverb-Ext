@@ -8,6 +8,8 @@
 
 Turn any track on your favorite music-streaming platform into a relaxing slowed-and-reverbed version or a chaotic nightcore one in real time. No downloads, uploads or re-encoding needed. 
 
+https://github.com/user-attachments/assets/d40673fe-7e16-48d5-a9fa-305c13b81d76
+
 ## Install
 - **Firefox**: [addons.mozilla.org/firefox/addon/lento](https://addons.mozilla.org/en-US/firefox/addon/lento/)
 - **Chrome**: currently under review
