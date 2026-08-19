@@ -30,6 +30,7 @@ https://github.com/user-attachments/assets/d40673fe-7e16-48d5-a9fa-305c13b81d76
 - Bandcamp
 - Apple Music
 - TikTok
+  
 ... and more! If it plays audio / video in a tab, Lento will probably catch it.
 
 ## How it works
