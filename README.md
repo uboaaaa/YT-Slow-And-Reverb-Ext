@@ -12,7 +12,7 @@ https://github.com/user-attachments/assets/d40673fe-7e16-48d5-a9fa-305c13b81d76
 
 ## Install
 - **Firefox**: [addons.mozilla.org/firefox/addon/lento](https://addons.mozilla.org/en-US/firefox/addon/lento/)
-- **Chrome**: currently under review
+- **Chrome**: [chromewebstore.google.com/detail/lento-slow-and-reverb-acr/](https://chromewebstore.google.com/detail/lento-slow-and-reverb-acr/hnlilbkeokfjgnlimecdfbinapfeemnj?authuser=0&hl=en)
 
 ## Features
 - **Speed** (0.5x to 2x) with pitch shift.
